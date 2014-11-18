@@ -5,6 +5,18 @@ from mpl_toolkits.mplot3d import Axes3D
 from pyrocko import moment_tensor
 from pyrocko.gf import seismosizer
 
+sdr_ranges = dict(zip(['strike', 'dip', 'rake'], [[0., 360.],
+                                                  [0., 90.],
+                                                  [-180., 180.]]))
+
+
+def GR_distribution(a,b, mag_lo, mag_hi):
+    '''from hazardlib or similar?!'''
+    return 10**(a- b*mag_lo) - 10**(a - b*mag_hi)
+
+def GR(a, b, M):
+    return 10**(a-b*M) 
+
 def Rz(theta):
     return num.array([[1, 0 ,0 ],
                       [0, cos(theta), -sin(theta)],
@@ -55,8 +67,8 @@ class BaseSourceGeometry():
         '''setup x, y and z coordinates of sources'''
 
     def iter_coordinates(self):
-        for num.nditer(self.xyz, order='F'):
-            yield F
+        for val in  num.nditer(self.xyz, order='F'):
+            yield val
 
         
 class RectangularSourceGeometry(BaseSourceGeometry):
@@ -87,12 +99,13 @@ class Timing:
         self.tmax = tmax
         self.n_steps = 10000
 
-    def set_window(self):
-        self.window = distribution
-
     def get_timings(self):
         if not self.geometry and not self.distribution:
             return num.random.normal(tmin, tmax, len(self.events))
+
+    def iter_timings(self):
+        for t in self.timings:
+            yield(t)
 
 class FocalDistribution():
     def __init__(self, n=0, base_mechanism=None, **kwargs):
@@ -100,21 +113,32 @@ class FocalDistribution():
         self.n = n 
         self.base_mechanism = base_mechanism
         self.mechanisms = self.get_mechanisms(**kwargs)
+
+    #def regularize_sdr(kwargs, source):
+    #    for k,v in kwargs.items():
+    #        _k = k[2:]
+                     
     
     def get_mechanisms(self, **kwargs):
         '''
         kwargs: strikemin, strikemax, dipmin, dipmax, rakemin, rakemax 
         '''
-        mechs = []
-        if self.base_mechanism:
+
+        #mechs = []
+        #self.kwargs.update(kwargs)
+        #if self.base_mechanism:
+        #    for k,v in self.kwargs.items():
+        #        k.
+
         
         for i in range(self.n_steps-1):
-            mechs.append(moment_tensor.random_strike_dip_rake(**kwargs))
+            mechs.append(moment_tensor.random_strike_dip_rake(**self.kwargs))
         return mechs
 
     def iter_mechanisms(self, **kwargs):
         for mech in list(self.get_mechanisms(**kwargs)):
             yield mech
+
 
 class Swarm():
     def __init__(self, geometry, timing, focal_distribution):
@@ -124,12 +148,12 @@ class Swarm():
         self.source_list = seismosizer.SourceList()
     
     def setup(self):
-        mechanisms = 
+        mechanisms = self.focal_distribution.iter_mechanisms()
+        timings = self.timing.iter_timings()
         for i in self.geometry.iter_coordinates():
-            mech 
+            mech = mechanisms.next()
+            t = timings.next()
             self.source_list.append(s)
-
-
 
 
 
