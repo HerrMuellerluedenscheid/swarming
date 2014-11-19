@@ -10,8 +10,20 @@ sdr_ranges = dict(zip(['strike', 'dip', 'rake'], [[0., 360.],
                                                   [-180., 180.]]))
 
 
+def GutenbergRichterDiscrete(a,b, Mmin=0., Mmax=8., inc=0.1, normalize=True):
+    """discrete GutenbergRichter randomizer.
+    Use returnvalue.rvs() to draw random number"""
+    x = num.arange(Mmin, Mmax+inc, inc)
+    y = 10**(a-b*x)
+    if normalize:
+        y/=num.sum(y)
+    
+    return x/inc, y, inc 
+
+
 def GR_distribution(a,b, mag_lo, mag_hi):
-    '''from hazardlib or similar?!'''
+    '''from hazardlib or similar?! 
+    TODO: wirklich gebraucht? '''
     return 10**(a- b*mag_lo) - 10**(a - b*mag_hi)
 
 def GR(a, b, M):
@@ -91,62 +103,117 @@ class RectangularSourceGeometry(BaseSourceGeometry):
         self.xyz = self.orientate(_xyz)
 
 
+class MagnitudeDistribution:
+    def __init__(self, x, y, Mmin=0., Mmax=8., inc=0.1, scaling=1.):
+        self.x = x
+        self.y = y
+        self.Mmin = Mmin
+        self.Mmax = Mmax
+        self.inc = inc
+        self.scaling = scaling
+        self.update_randomizer()
+
+    def set_distribution(self, x, y, scaling=1):
+        self.scaling = scaling
+        self.x = x
+        self.y = y
+        self.update_randomizer()
+
+    def get_randomizer(self):
+        return self.randomizer
+
+    def update_randomizer(self):
+        data = (self.x, self.y)
+        self.randomizer = stats.rv_discrete(name='magnitues', values=data)
+
+    def get_magnitude(self):
+        return self.randomizer.rvs()*self.scaling
+
+    def get_magnitudes(self, n):
+        return self.randomizer.rvs(size=n)*self.scaling
+
+    @classmethod
+    def GutenbergRichter(cls, *args, **kwargs):
+        x, y, scaling = GutenbergRichterDiscrete(*args, **kwargs)
+        return cls(x,y, scaling=scaling)
+
+
 class Timing:
-    def __init__(self, tmin, tmax, events, distribution=None, geometry=None):
-        self.geometry = geometry
-        self.distribution = distribution
+    def __init__(self, tmin, tmax, *args, **kwargs):
         self.tmin = tmin
         self.tmax = tmax
-        self.n_steps = 10000
-
-    def get_timings(self):
-        if not self.geometry and not self.distribution:
-            return num.random.normal(tmin, tmax, len(self.events))
+        self.timings = {}
 
     def iter_timings(self):
-        for t in self.timings:
-            yield(t)
+        for k,t in self.timings.iter_items():
+            yield k, t
+
+    def get_timings(self):
+        return self.timings 
+
+    def setup(self):
+        pass
+
+
+class RandomTiming(Timing):
+    def __init__(self, *args, **kwargs):
+        Timing.__init__(self, *args, **kwargs)
+        self.setup(kwargs.get['number'])
+
+    def setup(self, number):
+        i = num.range(number)
+        t = num.random.uniform(self.tmin, self.tmax, number)
+        self.timings = dict(zip(i, t))
+
 
 class FocalDistribution():
-    def __init__(self, n=0, base_mechanism=None, **kwargs):
-        self.kwargs = kwargs
+    def __init__(self, n=100, base_mechanism=None, variation=360, magnitude_distribution=None):
         self.n = n 
         self.base_mechanism = base_mechanism
-        self.mechanisms = self.get_mechanisms(**kwargs)
-
-    #def regularize_sdr(kwargs, source):
-    #    for k,v in kwargs.items():
-    #        _k = k[2:]
-                     
-    
-    def get_mechanisms(self, **kwargs):
-        '''
-        kwargs: strikemin, strikemax, dipmin, dipmax, rakemin, rakemax 
-        '''
-
-        #mechs = []
-        #self.kwargs.update(kwargs)
-        #if self.base_mechanism:
-        #    for k,v in self.kwargs.items():
-        #        k.
-
-        
-        for i in range(self.n_steps-1):
-            mechs.append(moment_tensor.random_strike_dip_rake(**self.kwargs))
-        return mechs
+        self.variation = variation
+        self.mag_dist = magnitude_distribution
+        self.sources = []
+        self.setup_sources()
 
     def iter_mechanisms(self, **kwargs):
         for mech in list(self.get_mechanisms(**kwargs)):
             yield mech
 
+    def setup_sources(self):
+        bs = self.base_source
+        s,d,r = bs.strike, bs.dip, bs.rake
+        for i in range(self.n):
+            sdr = moment_tensor.random_strike_dip_rake(s-self.variation/2.,
+                                                       s+self.variation/2.,
+                                                       d-self.variation/2.,
+                                                       d+self.variation/2.,
+                                                       r-self.variation/2.,
+                                                       r+self.variation/2.)
+
+            self.sources.append(seismosizer.DCSource(lat=0., 
+                                                     lon=0., 
+                                                     depth=0., 
+                                                     strike=sdr[0], 
+                                                     dip=sdr[1], 
+                                                     rake=sdr[2]))
+
+    def iter_sources(self):
+        for s in self.srcs:
+            yield s
+
+    def get_sources(self):
+        return self.sources
+
 
 class Swarm():
-    def __init__(self, geometry, timing, focal_distribution):
+    def __init__(self, geometry, timing, mechanisms):
         self.geometry = geometry
         self.timing = timing
-        self.focal_distribution = focal_distribution
+        self.focal_distribution = mechanisms 
         self.source_list = seismosizer.SourceList()
-    
+        self.setup_sources()
+
+
     def setup(self):
         mechanisms = self.focal_distribution.iter_mechanisms()
         timings = self.timing.iter_timings()
@@ -159,7 +226,7 @@ class Swarm():
 
 
 if __name__=='__main__':
-    swarm = RectangularSourceRegion(center_lon=10, 
+    geometry = RectangularSourceGeometry(center_lon=10, 
                                      center_lat=10.,
                                      center_depth=8000,
                                      azimuth=40.,
@@ -170,12 +237,14 @@ if __name__=='__main__':
                                      thickness=500., 
                                      n=100)
 
+    timing = 
+
     
     fig = plt.figure() 
     ax = fig.add_subplot(111, projection='3d')
-    ax.scatter(swarm.xyz[0], 
-               swarm.xyz[1],
-               swarm.xyz[2],
+    ax.scatter(geometry.xyz[0], 
+               geometry.xyz[1],
+               geometry.xyz[2],
                c='r',
                marker='o')
     ax.set_xlabel('X Label')
