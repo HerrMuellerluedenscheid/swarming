@@ -29,15 +29,6 @@ class Visualizer():
             U[i] = uvw[0][0]
             V[i] = uvw[0][1]
             W[i] = uvw[0][2]
-        print lats
-        print lons
-        print depths
-        print U
-        print V
-        print W
-        U[:] = 0.5
-        V[:] = 0.5
-        W[:] = 1
         fig = plt.figure() 
         ax = fig.add_subplot(111, projection='3d')
         sc = ax.scatter(lons,
@@ -47,7 +38,7 @@ class Visualizer():
                         s=mags,
                         marker='o')
 
-        qv = ax.quiver(lons, lats, depths, U, V, W, length=1)
+        qv = ax.quiver(lons, lats, depths, U, V, W, length=0.01)
         ax.set_xlabel('X Label')
         ax.set_ylabel('Y Label')
         ax.set_zlabel('Z Label')
