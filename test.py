@@ -10,15 +10,6 @@ from scipy import stats
 import scipy.stats as st
 
 
-def GutenbergRichterDiscrete(a,b, Mmin=0., Mmax=8., inc=0.1):
-    """discrete GutenbergRichter randomizer.
-    Use returnvalue.rvs() to draw random number"""
-    x = num.arange(Mmin, Mmax+inc, inc)
-    y = 10**(a-b*x)
-    y/=num.sum(y)
-    randomizer = stats.rv_discrete(name='custm', values=data, inc=inc)
-    return randomizer
-
 class GutenbergRichter(stats.rv_continuous):
     def _pdf(self, x, aval, bval):
         return 10**(aval-bval*x)
