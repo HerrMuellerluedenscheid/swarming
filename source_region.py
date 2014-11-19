@@ -1,9 +1,9 @@
 import numpy as num
 from numpy import sin, cos
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 from pyrocko import moment_tensor
 from pyrocko.gf import seismosizer
+from scipy import stats
 
 sdr_ranges = dict(zip(['strike', 'dip', 'rake'], [[0., 360.],
                                                   [0., 90.],
@@ -78,11 +78,10 @@ class BaseSourceGeometry():
     def setup(self):
         '''setup x, y and z coordinates of sources'''
 
-    def iter_coordinates(self):
-        for val in  num.nditer(self.xyz, order='F'):
+    def iter(self):
+        for val in  num.nditer(self.xyz, order='F', flags=['external_loop']):
             yield val
 
-        
 class RectangularSourceGeometry(BaseSourceGeometry):
     def __init__(self, length, depth, thickness, *args, **kwargs):
         BaseSourceGeometry.__init__(self, *args, **kwargs)
@@ -124,7 +123,7 @@ class MagnitudeDistribution:
 
     def update_randomizer(self):
         data = (self.x, self.y)
-        self.randomizer = stats.rv_discrete(name='magnitues', values=data)
+        self.randomizer = stats.rv_discrete(name='magnitudes', values=data)
 
     def get_magnitude(self):
         return self.randomizer.rvs()*self.scaling
@@ -144,8 +143,8 @@ class Timing:
         self.tmax = tmax
         self.timings = {}
 
-    def iter_timings(self):
-        for k,t in self.timings.iter_items():
+    def iter(self):
+        for k,t in self.timings.iteritems():
             yield k, t
 
     def get_timings(self):
@@ -158,21 +157,20 @@ class Timing:
 class RandomTiming(Timing):
     def __init__(self, *args, **kwargs):
         Timing.__init__(self, *args, **kwargs)
-        self.setup(kwargs.get['number'])
+        self.setup(kwargs.get('number'))
 
     def setup(self, number):
-        i = num.range(number)
+        i = range(number)
         t = num.random.uniform(self.tmin, self.tmax, number)
         self.timings = dict(zip(i, t))
 
 
 class FocalDistribution():
-    def __init__(self, n=100, base_mechanism=None, variation=360, magnitude_distribution=None):
+    def __init__(self, n=100, base_source=None, variation=360):
         self.n = n 
-        self.base_mechanism = base_mechanism
+        self.base_source= base_source 
         self.variation = variation
-        self.mag_dist = magnitude_distribution
-        self.sources = []
+        self.mechanisms = []
         self.setup_sources()
 
     def iter_mechanisms(self, **kwargs):
@@ -180,52 +178,69 @@ class FocalDistribution():
             yield mech
 
     def setup_sources(self):
-        bs = self.base_source
-        s,d,r = bs.strike, bs.dip, bs.rake
+        if self.base_source:
+            bs = self.base_source
+            s,d,r = bs.strike, bs.dip, bs.rake
         for i in range(self.n):
-            sdr = moment_tensor.random_strike_dip_rake(s-self.variation/2.,
+            if self.base_source:
+                sdr = moment_tensor.random_strike_dip_rake(s-self.variation/2.,
                                                        s+self.variation/2.,
                                                        d-self.variation/2.,
                                                        d+self.variation/2.,
                                                        r-self.variation/2.,
                                                        r+self.variation/2.)
+            else:
+                sdr = moment_tensor.random_strike_dip_rake()
+            self.mechanisms.append(sdr)
 
-            self.sources.append(seismosizer.DCSource(lat=0., 
-                                                     lon=0., 
-                                                     depth=0., 
-                                                     strike=sdr[0], 
-                                                     dip=sdr[1], 
-                                                     rake=sdr[2]))
+    def iter(self):
+        for mech in self.mechanisms:
+            yield mech
 
-    def iter_sources(self):
-        for s in self.srcs:
-            yield s
+    def get_mechanisms(self):
+        return self.mechanisms
+
+
+class Swarm():
+    def __init__(self, geometry, timing, mechanisms, magnitudes):
+        self.geometry = geometry
+        self.timing = timing
+        self.mechanisms = mechanisms 
+        self.magnitudes = magnitudes 
+        self.sources = seismosizer.SourceList()
+        self.setup()
+
+    def setup(self):
+        geometry = self.geometry.iter()
+        center_lat = self.geometry.center_lat
+        center_lon = self.geometry.center_lon
+        center_depth = self.geometry.center_depth
+
+        mechanisms = self.mechanisms.iter()
+        timings = self.timing.iter()
+        for north_shift, east_shift, depth in self.geometry.iter():
+            mech = mechanisms.next()
+            k, t = timings.next()
+            mag = self.magnitudes.get_magnitude()
+            s = seismosizer.DCSource(lat=float(center_lat), 
+                                     lon=float(center_lon), 
+                                     depth=float(depth+center_depth),
+                                     north_shift=float(north_shift),
+                                     east_shift=float(east_shift),
+                                     time=float(t),
+                                     magnitude=float(mag),
+                                     strike=float(mech[0]),
+                                     dip=float(mech[1]),
+                                     rake=float(mech[2]))
+            s.validate()
+            self.sources.append(s)
 
     def get_sources(self):
         return self.sources
 
 
-class Swarm():
-    def __init__(self, geometry, timing, mechanisms):
-        self.geometry = geometry
-        self.timing = timing
-        self.focal_distribution = mechanisms 
-        self.source_list = seismosizer.SourceList()
-        self.setup_sources()
-
-
-    def setup(self):
-        mechanisms = self.focal_distribution.iter_mechanisms()
-        timings = self.timing.iter_timings()
-        for i in self.geometry.iter_coordinates():
-            mech = mechanisms.next()
-            t = timings.next()
-            self.source_list.append(s)
-
-
-
-
 if __name__=='__main__':
+    number_sources = 100
     geometry = RectangularSourceGeometry(center_lon=10, 
                                      center_lat=10.,
                                      center_depth=8000,
@@ -235,23 +250,16 @@ if __name__=='__main__':
                                      length=6000.,
                                      depth=6000.,
                                      thickness=500., 
-                                     n=100)
+                                     n=number_sources)
 
-    timing = 
+    timing = RandomTiming(tmin=1000, tmax=100000, number=number_sources)
+    mechanisms = FocalDistribution(n=number_sources)
+    magnitudes = MagnitudeDistribution.GutenbergRichter(a=1, b=1.0)
+    swarm = Swarm(geometry=geometry, 
+                 timing=timing, 
+                 mechanisms=mechanisms,
+                 magnitudes=magnitudes)
 
-    
-    fig = plt.figure() 
-    ax = fig.add_subplot(111, projection='3d')
-    ax.scatter(geometry.xyz[0], 
-               geometry.xyz[1],
-               geometry.xyz[2],
-               c='r',
-               marker='o')
-    ax.set_xlabel('X Label')
-    ax.set_ylabel('Y Label')
-    ax.set_zlabel('Z Label')
-    ax.set_xlim([-3000,3000])
-    ax.set_ylim([-3000,3000])
-    ax.set_zlim([-3000,3000])
+    from visualizer import Visualizer
+    Visualizer(swarm)
 
-    plt.show()
