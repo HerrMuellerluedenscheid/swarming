@@ -238,28 +238,3 @@ class Swarm():
     def get_sources(self):
         return self.sources
 
-
-if __name__=='__main__':
-    number_sources = 100
-    geometry = RectangularSourceGeometry(center_lon=10, 
-                                     center_lat=10.,
-                                     center_depth=8000,
-                                     azimuth=40.,
-                                     dip=40.,
-                                     tilt=45.,
-                                     length=6000.,
-                                     depth=6000.,
-                                     thickness=500., 
-                                     n=number_sources)
-
-    timing = RandomTiming(tmin=1000, tmax=100000, number=number_sources)
-    mechanisms = FocalDistribution(n=number_sources)
-    magnitudes = MagnitudeDistribution.GutenbergRichter(a=1, b=1.0)
-    swarm = Swarm(geometry=geometry, 
-                 timing=timing, 
-                 mechanisms=mechanisms,
-                 magnitudes=magnitudes)
-
-    from visualizer import Visualizer
-    Visualizer(swarm)
-
