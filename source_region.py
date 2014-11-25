@@ -17,7 +17,7 @@ def GutenbergRichterDiscrete(a,b, Mmin=0., Mmax=8., inc=0.1, normalize=True):
     y = 10**(a-b*x)
     if normalize:
         y/=num.sum(y)
-    
+ 
     return x/inc, y, inc 
 
 
@@ -44,7 +44,7 @@ def Rx(theta):
                       [sin(theta), cos(theta), 0.],
                       [0, 0, 1]])
 
-def rot_matrix(alpha, beta, gamma):
+    def rot_matrix(alpha, beta, gamma):
     '''rotations around z-, y- and x-axis'''
     alpha *= (num.pi/180.)
     beta *= (num.pi/180.)
@@ -202,11 +202,13 @@ class FocalDistribution():
 
 
 class Swarm():
-    def __init__(self, geometry, timing, mechanisms, magnitudes):
+    def __init__(self, geometry, timing, mechanisms, magnitudes,
+            source_dimensions):
         self.geometry = geometry
         self.timing = timing
         self.mechanisms = mechanisms 
         self.magnitudes = magnitudes 
+        self.source_dimensions = source_dimensions
         self.sources = seismosizer.SourceList()
         self.setup()
 
@@ -222,6 +224,7 @@ class Swarm():
             mech = mechanisms.next()
             k, t = timings.next()
             mag = self.magnitudes.get_magnitude()
+            width, length, risetime = self.source_dimensions.get(mag)
             s = seismosizer.DCSource(lat=float(center_lat), 
                                      lon=float(center_lon), 
                                      depth=float(depth+center_depth),
@@ -237,4 +240,47 @@ class Swarm():
 
     def get_sources(self):
         return self.sources
+
+class STF():
+    """Base class to define width, length and duartion of source """
+    def __init__(self, relation, model=None):
+        self.relation = relation
+        self.model = model
+        self.model_z = model.profile('z')
+        self.model_vs = model.profile('vs')
+
+    def get(self, *args):
+        parseargs = self.__dict__[*args]
+        return self.relation(parseargs)
+
+    def postprocess(self, response):
+        for s,t,tr in response.iter_traces():
+            _vs = self.vs_from_depth(s.depth)
+            risetime = magnitude2risetimearea(s.magnitude, _vs)
+            slip = num.zeros(int(risetime/tr.deltat))
+            slip /= 
+
+            num.convolve()
+
+    def vs_from_depth(self, depth):
+        """ linear interpolated vs at *depth*"""
+        # TODO TEST!
+        i_top_layer = max(num.where(self.model_z<=depth))
+        i_bottom_layer = i_top_layer+1
+        m = (self.model_vs[i_bottom_layer] - self.model_vs[i_top_layer])\
+                /(self.model_z[i_bottom_layer]-self.model_z[i_top_layer])
+
+        return self.model_vs[i_top_layer]+m*(self.model_vs[i_top_layer]+depth)
+
+        
+
+def magnitude2risetimearea(mag, vs):
+    """Following Hank and Bakun 2002 and 2008
+    http://www.opensha.org/glossary-magScalingRelation
+    I assume rectangular source model. Rupture velocity 0.9*vs"""
+    # area
+    a = num.exp(mag-3.98)
+    length = num.sqrt(a)
+    risetime = length/(0.9*vs)
+    return length, risetime
 
