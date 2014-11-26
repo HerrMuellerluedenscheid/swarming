@@ -5,7 +5,7 @@ import numpy as num
 '''requires matplotlib > 1.4 due to 3D quiver'''
 
 class Visualizer():
-    def __init__(self, swarm):
+    def __init__(self, swarm, stations=None):
         sources = swarm.get_sources()
         #x = swarm.geometry.xyz[0]
         #y = swarm.geometry.xyz[1],
@@ -38,10 +38,27 @@ class Visualizer():
                         s=mags,
                         marker='o')
 
-        qv = ax.quiver(lons, lats, depths, U, V, W, length=0.01)
-        ax.set_xlabel('X Label')
-        ax.set_ylabel('Y Label')
-        ax.set_zlabel('Z Label')
+        if stations:
+            lats = []
+            lons = []
+            depths = []
+            for s in stations:
+                lats.append(s.lat)
+                lons.append(s.lon)
+                depths.append(s.depth)
+            print len(depths), len(lats), len(lons)
+            ax.scatter(num.array(lons),
+                            num.array(lats),
+                            num.array(depths),
+                            c='b',
+                            s=30,
+                            marker='^')
+                 
+        #qv = ax.quiver(lons, lats, depths, U, V, W, length=0.01)
+        ax.set_xlabel('Lon')
+        ax.set_ylabel('Lat')
+        ax.set_zlabel('Depth')
+        ax.invert_zaxis()
         #ax.set_xlim([-3000,3000])
         #ax.set_ylim([-3000,3000])
         #ax.set_zlim([-3000,3000])
