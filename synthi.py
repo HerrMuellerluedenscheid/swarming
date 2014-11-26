@@ -3,31 +3,42 @@ from pyrocko.model import load_stations
 from visualizer import Visualizer
 from source_region import *
 import numpy as num
+import os
 
 def guess_targets_from_stations(stations, channels='NEZ'):
     targets = []
     for s in stations:
-        if not s.channel:
+        if not s.channels:
             channels = channels
         else:
-            channel = s.channel
-        Target(s.lat, s.lon, s.elevation, s.depth, codes=channel)
+            channels = s.get_channels.keys()
+       
+        targets.extend([Target(lat=s.lat, 
+                               lon=s.lon, 
+                               elevation=s.elevation, 
+                               depth=s.depth, 
+                              codes=(s.network,
+                                     s.station,
+                                     s.location, 
+                                     c)) for c in channels])
     return targets    
         
 if __name__=='__main__':
 
+    webnet = os.environ["WEBNET"]
+    stores = os.environ["STORES"]
     number_sources = 100
 
     # swarm geometry
-    geometry = RectangularSourceGeometry(center_lon=10, 
-                                     center_lat=10.,
-                                     center_depth=8000,
+    geometry = RectangularSourceGeometry(center_lon=12.4, 
+                                     center_lat=50.2,
+                                     center_depth=10000,
                                      azimuth=40.,
-                                     dip=40.,
+                                     dip=10.,
                                      tilt=45.,
-                                     length=6000.,
-                                     depth=6000.,
-                                     thickness=500., 
+                                     length=2000.,
+                                     depth=800.,
+                                     thickness=100., 
                                      n=number_sources)
     
     # reference source
@@ -48,31 +59,32 @@ if __name__=='__main__':
     swarm = Swarm(geometry=geometry, 
                  timing=timing, 
                  mechanisms=mechanisms,
-                 magnitudes=magnitudes,
-                 )
-
-    engine = LocalEngine(store_superdirs=['/data/stores'])
+                 magnitudes=magnitudes)
 
     # The store we are going extract data from:
-    store_id = 'crust2_dd'
+    store_id = 'vogtland'
+    engine = LocalEngine(store_superdirs=[stores], 
+                         default_store_id=store_id)
+
     
     # setup stations/targets:
-    stats = load_stations('/data/webnet/meta/stations.pf')
+    stats = load_stations(webnet+'/meta/stations.pf')
+    #Visualizer(swarm, stats)
     targets = guess_targets_from_stations(stats)
-    #targets = [Target(lat=10.1,
-    #                  lon=10.1,
-    #                  elevation=0.,
-    #                  codes=('', 'SYN', '', channel_id)
-    #                  )  for channel_id in 'NEZ']
 
     # Processing that data will return a pyrocko.gf.seismosizer.Reponse object.
     response = engine.process(sources=swarm.get_sources(), 
                               targets=targets)
 
+    # Obacht: das muss besser!
+    store = engine.get_store()
+    config = store.config 
+    model = config.earthmodel_1d
+    stf = STF(magnitude2risetimearea, model=model)
+    stf.process(response)
     # One way of requesting the processed traces is as follows
     #self.synthetic_traces = response.pyrocko_traces()
 
-    #Visualizer(swarm)
 
 
 

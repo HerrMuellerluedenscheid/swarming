@@ -3,7 +3,8 @@ from numpy import sin, cos
 import matplotlib.pyplot as plt
 from pyrocko import moment_tensor
 from pyrocko.gf import seismosizer
-from scipy import stats
+from scipy import stats, interpolate
+import os
 
 sdr_ranges = dict(zip(['strike', 'dip', 'rake'], [[0., 360.],
                                                   [0., 90.],
@@ -44,7 +45,7 @@ def Rx(theta):
                       [sin(theta), cos(theta), 0.],
                       [0, 0, 1]])
 
-    def rot_matrix(alpha, beta, gamma):
+def rot_matrix(alpha, beta, gamma):
     '''rotations around z-, y- and x-axis'''
     alpha *= (num.pi/180.)
     beta *= (num.pi/180.)
@@ -66,7 +67,6 @@ class BaseSourceGeometry():
     def orientate(self, xyz):
         '''Apply rotation and dipping.'''
         rm = rot_matrix(self.azimuth, self.dip, self.tilt)
-        print rm
         _xyz = num.zeros(xyz.shape)
         _xyz = _xyz.T
         i = 0 
@@ -143,9 +143,17 @@ class Timing:
         self.tmax = tmax
         self.timings = {}
 
-    def iter(self):
-        for k,t in self.timings.iteritems():
-            yield k, t
+    def iter(self, key=None):
+        if key:
+            keys = sorted(self.timings.keys())
+        else:
+            pass
+        print 'need implementation'
+        for k in keys:
+            yield k, self.timings[k]:
+
+    def set_key(self, key):
+        self.key = key
 
     def get_timings(self):
         return self.timings 
@@ -163,6 +171,20 @@ class RandomTiming(Timing):
         i = range(number)
         t = num.random.uniform(self.tmin, self.tmax, number)
         self.timings = dict(zip(i, t))
+
+class AzimuthalPropagation(Timing):
+    def __init__(self, *args, **kwargs):
+        Timing.__init__(self, *args, **kwargs)
+        self.setup(kwargs.get('number'))
+
+    def setup(number, sources, azimuth, dip, rake):
+        # projection onto rupture vector
+        perp = (azimuth+90.)/180.*num.pi
+
+        # linear interpolation 
+
+        # adding normal randomization
+
 
 
 class FocalDistribution():
@@ -202,13 +224,11 @@ class FocalDistribution():
 
 
 class Swarm():
-    def __init__(self, geometry, timing, mechanisms, magnitudes,
-            source_dimensions):
+    def __init__(self, geometry, timing, mechanisms, magnitudes):
         self.geometry = geometry
         self.timing = timing
         self.mechanisms = mechanisms 
         self.magnitudes = magnitudes 
-        self.source_dimensions = source_dimensions
         self.sources = seismosizer.SourceList()
         self.setup()
 
@@ -224,7 +244,6 @@ class Swarm():
             mech = mechanisms.next()
             k, t = timings.next()
             mag = self.magnitudes.get_magnitude()
-            width, length, risetime = self.source_dimensions.get(mag)
             s = seismosizer.DCSource(lat=float(center_lat), 
                                      lon=float(center_lon), 
                                      depth=float(depth+center_depth),
@@ -249,29 +268,26 @@ class STF():
         self.model_z = model.profile('z')
         self.model_vs = model.profile('vs')
 
-    def get(self, *args):
-        parseargs = self.__dict__[*args]
-        return self.relation(parseargs)
-
-    def postprocess(self, response):
-        for s,t,tr in response.iter_traces():
+    def process(self, response):
+        for s,t,tr in response.iter_results():
             _vs = self.vs_from_depth(s.depth)
-            risetime = magnitude2risetimearea(s.magnitude, _vs)
-            slip = num.zeros(int(risetime/tr.deltat))
-            slip /= 
-
-            num.convolve()
+            print _vs
+            length, risetime = magnitude2risetimearea(s.magnitude, _vs)
+            print risetime
+            slip = num.arange(0., risetime, tr.deltat)
+            y_int = interpolate.interp1d(0., 1.)
+            tr.set_ydata(num.convolve(y_int, tr.get_ydata()))
+    
+        return response
 
     def vs_from_depth(self, depth):
         """ linear interpolated vs at *depth*"""
-        # TODO TEST!
-        i_top_layer = max(num.where(self.model_z<=depth))
+        i_top_layer = num.max(num.where(self.model_z<=depth))
         i_bottom_layer = i_top_layer+1
-        m = (self.model_vs[i_bottom_layer] - self.model_vs[i_top_layer])\
-                /(self.model_z[i_bottom_layer]-self.model_z[i_top_layer])
-
-        return self.model_vs[i_top_layer]+m*(self.model_vs[i_top_layer]+depth)
-
+        v_b = self.model_vs[i_bottom_layer]
+        v_t = self.model_vs[i_top_layer]
+        return v_t+(v_b-v_t)*(depth-self.model_z[i_top_layer])\
+                /(self.model_z[i_top_layer]-self.model_z[i_bottom_layer])
         
 
 def magnitude2risetimearea(mag, vs):
