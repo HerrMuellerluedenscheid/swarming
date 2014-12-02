@@ -144,13 +144,13 @@ class Timing:
         self.timings = {}
 
     def iter(self, key=None):
-        if key:
-            keys = sorted(self.timings.keys())
-        else:
-            pass
-        print 'need implementation'
+        #if key:
+        #    keys = sorted(self.timings.keys())
+        #else:
+        keys = sorted(self.timings.keys())
+            
         for k in keys:
-            yield k, self.timings[k]:
+            yield k, self.timings[k]
 
     def set_key(self, key):
         self.key = key
@@ -271,12 +271,12 @@ class STF():
     def process(self, response):
         for s,t,tr in response.iter_results():
             _vs = self.vs_from_depth(s.depth)
-            print _vs
             length, risetime = magnitude2risetimearea(s.magnitude, _vs)
-            print risetime
             slip = num.arange(0., risetime, tr.deltat)
-            y_int = interpolate.interp1d(0., 1.)
-            tr.set_ydata(num.convolve(y_int, tr.get_ydata()))
+            finterp = interpolate.interp1d([0.,risetime], [0., 1.])
+            ynew = finterp(slip)
+            tr.set_ydata(num.convolve(ynew, tr.get_ydata()))
+        response.snuffle()
     
         return response
 
@@ -296,7 +296,8 @@ def magnitude2risetimearea(mag, vs):
     I assume rectangular source model. Rupture velocity 0.9*vs"""
     # area
     a = num.exp(mag-3.98)
-    length = num.sqrt(a)
+    #side length [m] rectangular source plane
+    length = num.sqrt(a)*1000
     risetime = length/(0.9*vs)
     return length, risetime
 
