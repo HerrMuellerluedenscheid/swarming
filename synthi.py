@@ -1,5 +1,6 @@
 from pyrocko.gf.seismosizer import RemoteEngine, Target, LocalEngine
-from pyrocko.model import load_stations
+from pyrocko.model import load_stations, dump_events
+from pyrocko import io
 from visualizer import Visualizer
 from source_region import *
 import numpy as num
@@ -27,7 +28,7 @@ if __name__=='__main__':
 
     webnet = os.environ["WEBNET"]
     stores = os.environ["STORES"]
-    number_sources = 100
+    number_sources = 10
 
     # swarm geometry
     geometry = RectangularSourceGeometry(center_lon=12.4, 
@@ -58,9 +59,9 @@ if __name__=='__main__':
     magnitudes = MagnitudeDistribution.GutenbergRichter(a=1, b=1.0)
 
     swarm = Swarm(geometry=geometry, 
-                 timing=timing, 
-                 mechanisms=mechanisms,
-                 magnitudes=magnitudes)
+                  timing=timing, 
+                  mechanisms=mechanisms,
+                  magnitudes=magnitudes)
 
     # The store we are going extract data from:
     store_id = 'vogtland'
@@ -77,6 +78,9 @@ if __name__=='__main__':
     response = engine.process(sources=swarm.get_sources(), 
                               targets=targets)
 
+    
+    dump_events(swarm.get_events(), 'events_swarm.pf')
+    io.save(response.pyrocko_traces(), 'swarm.mseed')
     # Obacht: das muss besser!
     store = engine.get_store()
     config = store.config 
