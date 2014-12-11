@@ -10,6 +10,8 @@ sdr_ranges = dict(zip(['strike', 'dip', 'rake'], [[0., 360.],
                                                   [0., 90.],
                                                   [-180., 180.]]))
 
+to_rad = num.pi/180.
+
 
 def GutenbergRichterDiscrete(a,b, Mmin=0., Mmax=8., inc=0.1, normalize=True):
     """discrete GutenbergRichter randomizer.
@@ -172,18 +174,38 @@ class RandomTiming(Timing):
         t = num.random.uniform(self.tmin, self.tmax, number)
         self.timings = dict(zip(i, t))
 
-class AzimuthalPropagation(Timing):
+class PropagationTiming(Timing):
     def __init__(self, *args, **kwargs):
-        Timing.__init__(self, *args, **kwargs)
-        self.setup(kwargs.get('number'))
+        Timing.__init__(self, geometry=None, *args, **kwargs)
+        self.geometry = geometry
 
-    def setup(number, sources, azimuth, dip, rake):
-        # projection onto rupture vector
-        perp = (azimuth+90.)/180.*num.pi
+    def setup(number=None, sources=None, azimuth=None, dip=None, tilt=None):
+        sources = self.geometry.sources if not sources else sources
+        azimuth = self.geometry.azimuth if not azimuth else azimuth
+        dip = self.geometry.dip if not dip  else dip
+        tilt = self.geometry.tilt if not tilt else tilt
+        #theta = (90.-azimuth)%360.
+        #theta *= to_rad 
+        direction = num.array([1,0,0]).T
+        '''Apply rotation and dipping.'''
+        rm = rot_matrix(azimuth, dip, tilt)
+        w = num.dot(rm, direction)
+        wnorm = num.linalg.norm(w)
+        wnorm_sq = wnorm**2
+
+        for s in sources:# projection onto rupture vector
+            v = [s.north_shift, s.east_shift, s.depth-self.geometry.center_depth]
+            vnorm = num.linalg.norm(v)
+            projv = num.dot(w,v)/wnorm_sq*w
+            print projv    
+        
+
+        #perp = (azimuth+90.)/180.*num.pi
 
         # linear interpolation 
 
         # adding normal randomization
+        return _xyz.T
 
 
 

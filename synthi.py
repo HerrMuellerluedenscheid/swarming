@@ -46,7 +46,8 @@ if __name__=='__main__':
                                        strike=170, dip=80,rake=30)
     
     # Timing
-    timing = RandomTiming(tmin=1000, tmax=100000, number=number_sources)
+    #timing = RandomTiming(tmin=1000, tmax=100000, number=number_sources)
+    timing = PropagationTiming(geometry)
     
     # Focal Mechanisms 
     mechanisms = FocalDistribution(n=number_sources, 
