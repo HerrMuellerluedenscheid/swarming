@@ -260,6 +260,9 @@ class Swarm():
     def get_sources(self):
         return self.sources
 
+    def get_events(self):
+        return [s.pyrocko_event() for s in self.sources]
+
 class STF():
     """Base class to define width, length and duartion of source """
     def __init__(self, relation, model=None):
