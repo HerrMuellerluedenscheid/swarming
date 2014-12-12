@@ -16,7 +16,13 @@ to_rad = num.pi/180.
 
 def GutenbergRichterDiscrete(a,b, Mmin=0., Mmax=8., inc=0.1, normalize=True):
     """discrete GutenbergRichter randomizer.
-    Use returnvalue.rvs() to draw random number"""
+    Use returnvalue.rvs() to draw random number. 
+    
+    :param a: a-value
+    :param b: b-value
+    :param Mmin: minimum magnitude of distribution
+    :param Mmax: maxiumum magnitude of distribution
+    :param inc: step of magnitudes """
     x = num.arange(Mmin, Mmax+inc, inc)
     y = 10**(a-b*x)
     if normalize:
@@ -86,6 +92,7 @@ class BaseSourceGeometry():
             yield val
 
 class RectangularSourceGeometry(BaseSourceGeometry):
+    '''Source locations in a cuboid shaped volume'''
     def __init__(self, length, depth, thickness, *args, **kwargs):
         BaseSourceGeometry.__init__(self, *args, **kwargs)
         self.length = length
@@ -106,6 +113,7 @@ class RectangularSourceGeometry(BaseSourceGeometry):
 
 
 class MagnitudeDistribution:
+    '''Magnitudes that the events should have.'''
     def __init__(self, x, y, Mmin=0., Mmax=8., inc=0.1, scaling=1.):
         self.x = x
         self.y = y
@@ -141,6 +149,7 @@ class MagnitudeDistribution:
 
 
 class Timing:
+    ''' When should events fire?'''
     def __init__(self, tmin, tmax, *args, **kwargs):
         self.tmin = tmin
         self.tmax = tmax
@@ -166,6 +175,7 @@ class Timing:
 
 
 class RandomTiming(Timing):
+    ''' Random event times'''
     def __init__(self, *args, **kwargs):
         Timing.__init__(self, *args, **kwargs)
         self.setup(kwargs.get('number'))
@@ -176,6 +186,8 @@ class RandomTiming(Timing):
         self.timings = dict(zip(i, t))
 
 class PropagationTiming(Timing):
+    ''' Not yet ready, or buggy. This is supposed to add a directivity to
+    event nucliation... '''
     def __init__(self, *args, **kwargs):
         Timing.__init__(self, geometry=None, *args, **kwargs)
         self.geometry = geometry
@@ -211,7 +223,15 @@ class PropagationTiming(Timing):
 
 
 class FocalDistribution():
+    '''Randomizer class for focal mechanisms. 
+    Based on the base_source and a variation given in degrees focal mechanisms
+    are randomized.'''
     def __init__(self, n=100, base_source=None, variation=360):
+        '''
+        :param n: number of needed focal mechansims
+        :param base_source: a pyrocko reference source 
+        :param variation: [degree] by how much focal mechanisms may deviate
+                        from *base_source*'''
         self.n = n 
         self.base_source= base_source 
         self.variation = variation
@@ -247,6 +267,8 @@ class FocalDistribution():
 
 
 class Swarm():
+    '''This puts all privous classes into a nutshell and produces the 
+    swarm'''
     def __init__(self, geometry, timing, mechanisms, magnitudes, stf=None):
         self.geometry = geometry
         self.timing = timing
@@ -257,6 +279,11 @@ class Swarm():
         self.setup()
 
     def setup(self, model='dc'):
+        '''Two different source types can be used: rectangular source and
+        DCsource. When using DC Sources, the source time function (STF class)
+        will be added using the *post_process* method. Otherwise, rupture
+        velocity, rise time and rupture length are deduced from source depth
+        and magnitude.'''
         geometry = self.geometry.iter()
         center_lat = self.geometry.center_lat
         center_lon = self.geometry.center_lon
@@ -309,13 +336,16 @@ class Swarm():
                 self.sources.append(s)
 
     def get_sources(self):
+        '''Return a list of source'''
         return self.sources
 
     def get_events(self):
+        '''Return a list of all events'''
         return [s.pyrocko_event() for s in self.sources]
 
 
 class Container():
+    '''Similar to seismosizer.Response... Just for convenience'''
     def __init__(self):
         self.data = defaultdict(dict)
 
