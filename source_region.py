@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from pyrocko import moment_tensor
 from pyrocko.gf import seismosizer
 from scipy import stats, interpolate
+from collections import defaultdict
 import os
 
 sdr_ranges = dict(zip(['strike', 'dip', 'rake'], [[0., 360.],
@@ -246,15 +247,16 @@ class FocalDistribution():
 
 
 class Swarm():
-    def __init__(self, geometry, timing, mechanisms, magnitudes):
+    def __init__(self, geometry, timing, mechanisms, magnitudes, stf=None):
         self.geometry = geometry
         self.timing = timing
         self.mechanisms = mechanisms 
         self.magnitudes = magnitudes 
         self.sources = seismosizer.SourceList()
+        self.stf = stf
         self.setup()
 
-    def setup(self):
+    def setup(self, model='dc'):
         geometry = self.geometry.iter()
         center_lat = self.geometry.center_lat
         center_lon = self.geometry.center_lon
@@ -262,28 +264,75 @@ class Swarm():
 
         mechanisms = self.mechanisms.iter()
         timings = self.timing.iter()
-        for north_shift, east_shift, depth in self.geometry.iter():
-            mech = mechanisms.next()
-            k, t = timings.next()
-            mag = self.magnitudes.get_magnitude()
-            s = seismosizer.DCSource(lat=float(center_lat), 
-                                     lon=float(center_lon), 
-                                     depth=float(depth+center_depth),
-                                     north_shift=float(north_shift),
-                                     east_shift=float(east_shift),
-                                     time=float(t),
-                                     magnitude=float(mag),
-                                     strike=float(mech[0]),
-                                     dip=float(mech[1]),
-                                     rake=float(mech[2]))
-            s.validate()
-            self.sources.append(s)
+        if model=='rectangular':
+            for north_shift, east_shift, depth in self.geometry.iter():
+                mech = mechanisms.next()
+                k, t = timings.next()
+                mag = self.magnitudes.get_magnitude()
+                L, rt = self.stf.get_L_risetime(depth+center_depth, mag)
+                z = depth+center_depth
+                velo = self.stf.vs_from_depth(z+center_depth)
+                s = seismosizer.RectangularSource(lat=float(center_lat), 
+                                                  lon=float(center_lon), 
+                                                  depth=float(z),
+                                                  north_shift=float(north_shift),
+                                                  east_shift=float(east_shift),
+                                                  time=float(t),
+                                                  magnitude=float(mag),
+                                                  strike=float(mech[0]),
+                                                  dip=float(mech[1]),
+                                                  rake=float(mech[2]),
+                                                  length=float(L),
+                                                  width=float(L),
+                                                  velocity=float(velo),
+                                                  risetime=float(t))
+                s.validate()
+        elif model=='dc':
+            for north_shift, east_shift, depth in self.geometry.iter():
+                mech = mechanisms.next()
+                k, t = timings.next()
+                mag = self.magnitudes.get_magnitude()
+                #L, rt = self.stf.get_L_risetime(depth+center_depth, mag)
+                z = depth+center_depth
+                velo = self.stf.vs_from_depth(z+center_depth)
+                s = seismosizer.DCSource(lat=float(center_lat), 
+                                         lon=float(center_lon), 
+                                         depth=float(depth+center_depth),
+                                         north_shift=float(north_shift),
+                                         east_shift=float(east_shift),
+                                         time=float(t),
+                                         magnitude=float(mag),
+                                         strike=float(mech[0]),
+                                         dip=float(mech[1]),
+                                         rake=float(mech[2]))
+                s.validate()
+                self.sources.append(s)
 
     def get_sources(self):
         return self.sources
 
     def get_events(self):
         return [s.pyrocko_event() for s in self.sources]
+
+
+class Container():
+    def __init__(self):
+        self.data = defaultdict(dict)
+
+    def add_item(self, key1, key2, item):
+        self.data[key1][key2] = item
+
+    def traces_list(self):
+        data = [] 
+        for s, t_tr in self.data.items():
+            for t, tr in t_tr.items():
+                data.append(tr)
+        return data
+
+    def snuffle(self):
+        '''Open *snuffler* with requested traces.'''
+        trace.snuffle(self.traces_list())
+
 
 class STF():
     """Base class to define width, length and duartion of source """
@@ -293,17 +342,23 @@ class STF():
         self.model_z = model.profile('z')
         self.model_vs = model.profile('vs')
 
-    def process(self, response):
+    def post_process(self, response):
+        '''a pyrocko.gf.seismosizer.Response object can be handed over on
+        which source time functions are supposed to be applied'''
+        _return_traces = Container()
         for s,t,tr in response.iter_results():
             _vs = self.vs_from_depth(s.depth)
             length, risetime = magnitude2risetimearea(s.magnitude, _vs)
-            slip = num.arange(0., risetime, tr.deltat)
-            finterp = interpolate.interp1d([0.,risetime], [0., 1.])
-            ynew = finterp(slip)
-            tr.set_ydata(num.convolve(ynew, tr.get_ydata()))
-        response.snuffle()
+            x_stf_new = num.arange(0.,risetime, tr.deltat)
+            finterp = interpolate.interp1d([0., x_stf_new[-1]], [0., 1.])
+            y_stf_new = finterp(x_stf_new)
+            conv_diff = (len(y_stf_new)-1)/2
+            new_y = num.convolve(y_stf_new, tr.get_ydata())
+            tr.set_ydata(new_y[conv_diff:-conv_diff])
+            
+            _return_traces.add_item(s, t, tr)
     
-        return response
+        return _return_traces
 
     def vs_from_depth(self, depth):
         """ linear interpolated vs at *depth*"""
@@ -314,6 +369,10 @@ class STF():
         return v_t+(v_b-v_t)*(depth-self.model_z[i_top_layer])\
                 /(self.model_z[i_top_layer]-self.model_z[i_bottom_layer])
         
+    def get_L_risetime(self, depth, magnitude):
+        _vs = self.vs_from_depth(depth)
+        return magnitude2risetimearea(magnitude, _vs)
+
 
 def magnitude2risetimearea(mag, vs):
     """Following Hank and Bakun 2002 and 2008

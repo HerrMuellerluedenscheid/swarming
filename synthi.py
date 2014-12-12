@@ -7,6 +7,8 @@ import numpy as num
 import os
 
 def guess_targets_from_stations(stations, channels='NEZ'):
+    '''convert a list of pyrocko stations to individual seismosizer target 
+    instances.'''
     targets = []
     for s in stations:
         if not s.channels:
@@ -25,10 +27,14 @@ def guess_targets_from_stations(stations, channels='NEZ'):
     return targets    
         
 if __name__=='__main__':
-
+    
+    # I use the following environment variables to locate green function 
+    # stores and the station files, which in this case are the webnet stations.
     webnet = os.environ["WEBNET"]
     stores = os.environ["STORES"]
-    number_sources = 10
+
+    # Number of sources....
+    number_sources = 20
 
     # swarm geometry
     geometry = RectangularSourceGeometry(center_lon=12.4, 
@@ -38,7 +44,7 @@ if __name__=='__main__':
                                      dip=10.,
                                      tilt=45.,
                                      length=2000.,
-                                     depth=800.,
+                                     depth=1000.,
                                      thickness=100., 
                                      n=number_sources)
     
@@ -47,31 +53,43 @@ if __name__=='__main__':
                                        strike=170, dip=80,rake=30)
     
     # Timing
-    #timing = RandomTiming(tmin=1000, tmax=100000, number=number_sources)
-    timing = PropagationTiming(geometry)
+    timing = RandomTiming(tmin=1000, tmax=100000, number=number_sources)
+    #timing = PropagationTiming(geometry)
     
-    # Focal Mechanisms 
+    # Focal Mechanisms based on reference source a variation of strike, dip 
+    # and rake in degrees and the number of sources.
     mechanisms = FocalDistribution(n=number_sources, 
                                    base_source=base_source, 
                                    variation=20)
 
-    #magnitude distribution
+    # magnitude distribution
     magnitudes = MagnitudeDistribution.GutenbergRichter(a=1, b=1.0)
 
-    swarm = Swarm(geometry=geometry, 
-                  timing=timing, 
-                  mechanisms=mechanisms,
-                  magnitudes=magnitudes)
-
-    # The store we are going extract data from:
+    # The store we are going extract green function from:
     store_id = 'vogtland'
     engine = LocalEngine(store_superdirs=[stores], 
                          default_store_id=store_id)
 
-    
+    # Obacht: das muss besser!
+    store = engine.get_store()
+    config = store.config 
+    model = config.earthmodel_1d
+    stf = STF(magnitude2risetimearea, model=model)
+
+    # Gather these information to create the swarm:
+    swarm = Swarm(geometry=geometry, 
+                  timing=timing, 
+                  mechanisms=mechanisms,
+                  magnitudes=magnitudes,
+                  stf=stf)
+
     # setup stations/targets:
     stats = load_stations(webnet+'/meta/stations.pf')
+    
+    # Scrutinize the swarm using matplotlib
     #Visualizer(swarm, stats)
+
+    # convert loaded stations to targets (see function at the top).
     targets = guess_targets_from_stations(stats)
 
     # Processing that data will return a pyrocko.gf.seismosizer.Reponse object.
@@ -79,17 +97,13 @@ if __name__=='__main__':
                               targets=targets)
 
     
+    # Save the events
     dump_events(swarm.get_events(), 'events_swarm.pf')
     io.save(response.pyrocko_traces(), 'swarm.mseed')
-    # Obacht: das muss besser!
-    store = engine.get_store()
-    config = store.config 
-    model = config.earthmodel_1d
-    stf = STF(magnitude2risetimearea, model=model)
-    stf.process(response)
+
+    convolved_traces = stf.post_process(response)
+    
+    # Save traces:
+    io.save(convolved_traces.traces_list(), 'swarm_stf.mseed')
     # One way of requesting the processed traces is as follows
     #self.synthetic_traces = response.pyrocko_traces()
-
-
-
-
