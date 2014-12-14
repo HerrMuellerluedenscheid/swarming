@@ -2,6 +2,7 @@ from pyrocko.gf.seismosizer import RemoteEngine, Target, LocalEngine
 from pyrocko.model import load_stations, dump_events
 from pyrocko import io
 from visualizer import Visualizer
+from source_region import magnitude2risetimearea
 from source_region import *
 import numpy as num
 import os
@@ -63,7 +64,8 @@ if __name__=='__main__':
                                        strike=170, dip=80,rake=-30)
     
     # Timing tmin and tmax are in seconds after 1.1.1970
-    timing = RandomTiming(tmin=1000, tmax=100000, number=number_sources)
+    one_day = 24*60*60
+    timing = RandomTiming(tmin=0, tmax=one_day, number=number_sources)
 
     # The PropagationTiming class is not finished yet. The idea was to be
     # able to let the events start nucleating at one point and let them 
