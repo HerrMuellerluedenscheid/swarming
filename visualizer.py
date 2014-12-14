@@ -11,7 +11,7 @@ class Visualizer():
         #y = swarm.geometry.xyz[1],
         #z = swarm.geometry.xyz[2],
         times = []
-        mags = []
+        mags = num.zeros(len(sources))
         lats = []
         lons = []
         depths = []
@@ -23,19 +23,27 @@ class Visualizer():
             lons.append(s.effective_lon)
             depths.append(s.depth)
             times.append(s.time)
-            mags.append(5+s.magnitude*30)
+            mags[i] = s.magnitude
             mt = s.pyrocko_moment_tensor()
             uvw = num.array(mt.t_axis())
             U[i] = uvw[0][0]
             V[i] = uvw[0][1]
             W[i] = uvw[0][2]
         fig = plt.figure() 
-        ax = fig.add_subplot(111, projection='3d')
+        ax = fig.add_subplot(131, projection='3d')
         sc = ax.scatter(lons,
                         lats,
                         depths,
                         c=times,
-                        s=mags,
+                        s=(3.+mags)*30.,
+                        marker='o')
+
+        ax = fig.add_subplot(132, projection='3d')
+        sc = ax.scatter(lons,
+                        lats,
+                        depths,
+                        c=times,
+                        s=(3.+mags)*30.,
                         marker='o')
 
         if stations:
@@ -63,7 +71,9 @@ class Visualizer():
         #ax.set_ylim([-3000,3000])
         #ax.set_zlim([-3000,3000])
         fig.colorbar(sc)
-
+        
+        ax = fig.add_subplot(133)
+        ax.hist(mags, bins=num.arange(min(mags), max(mags)+0.1, 0.1))
         plt.show()
 
 
