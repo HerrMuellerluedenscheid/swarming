@@ -91,7 +91,7 @@ class BaseSourceGeometry():
         for val in  num.nditer(self.xyz, order='F', flags=['external_loop']):
             yield val
 
-class RectangularSourceGeometry(BaseSourceGeometry):
+class CuboidSourceGeometry(BaseSourceGeometry):
     '''Source locations in a cuboid shaped volume'''
     def __init__(self, length, depth, thickness, *args, **kwargs):
         BaseSourceGeometry.__init__(self, *args, **kwargs)
@@ -299,7 +299,7 @@ class Swarm():
                 L, rt = self.stf.get_L_risetime(depth+center_depth, mag)
                 z = depth+center_depth
                 velo = self.stf.vs_from_depth(z+center_depth)
-                s = seismosizer.RectangularSource(lat=float(center_lat), 
+                s = seismosizer.CuboidSourceGeometry(lat=float(center_lat), 
                                                   lon=float(center_lon), 
                                                   depth=float(z),
                                                   north_shift=float(north_shift),
@@ -372,16 +372,28 @@ class STF():
         self.model_z = model.profile('z')
         self.model_vs = model.profile('vs')
 
-    def post_process(self, response):
+    def post_process(self, response, method='guess'):
         '''a pyrocko.gf.seismosizer.Response object can be handed over on
-        which source time functions are supposed to be applied'''
+        which source time functions are supposed to be applied.
+        
+        :param method: if this parameter is set to 'guess', 
+            method guess_risettime_by_magnitude (see below) will be used
+            to estimate rise times.
+            Otherwise method magnitude2risetimearea is used. Latter one 
+            is a scaling relation which is rather used for larger earthquakes.
+        '''
         _return_traces = Container()
         for s,t,tr in response.iter_results():
             _vs = self.vs_from_depth(s.depth)
-            length, risetime = magnitude2risetimearea(s.magnitude, _vs)
+            if not method=='guess':
+                length, risetime = magnitude2risetimearea(s.magnitude, _vs)
+            else:
+                risetime = guess_risettime_by_magnitude(s.magnitude)
             x_stf_new = num.arange(0.,risetime, tr.deltat)
             finterp = interpolate.interp1d([0., x_stf_new[-1]], [0., 1.])
             y_stf_new = finterp(x_stf_new)
+
+            #correct for additional samples due to convolution:
             conv_diff = (len(y_stf_new)-1)/2
             new_y = num.convolve(y_stf_new, tr.get_ydata())
             tr.set_ydata(new_y[conv_diff:-conv_diff])
@@ -391,7 +403,7 @@ class STF():
         return _return_traces
 
     def vs_from_depth(self, depth):
-        """ linear interpolated vs at *depth*"""
+        """ linear interpolated vs at a given *depth* in the provided model."""
         i_top_layer = num.max(num.where(self.model_z<=depth))
         i_bottom_layer = i_top_layer+1
         v_b = self.model_vs[i_bottom_layer]
@@ -402,6 +414,26 @@ class STF():
     def get_L_risetime(self, depth, magnitude):
         _vs = self.vs_from_depth(depth)
         return magnitude2risetimearea(magnitude, _vs)
+
+
+def guess_risettime_by_magnitude(mag):
+    '''interpolate rise times from guessed rise times at certain magnitudes.
+    modify the dictionary below at free will if you know which rise times are
+    to be expected.'''
+    #Freely guessed values. keys-> magnitudes, values -> rise times
+    guessed_rise_times = {-1:0.001,
+                          0:0.01,
+                          1:0.05,
+                          2:0.1,
+                          3:0.5,
+                          4:1.0,
+                          5:2}
+    
+    mags = num.array(guessed_rise_times.keys())
+    rts = num.array(guessed_rise_times.values())
+
+    finterp = interpolate.interp1d(mags, rts)
+    return finterp(mag)
 
 
 def magnitude2risetimearea(mag, vs):
