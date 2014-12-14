@@ -76,7 +76,7 @@ if __name__=='__main__':
     # and rake in degrees and the number of sources.
     mechanisms = FocalDistribution(n=number_sources, 
                                    base_source=base_source, 
-                                   variation=30)
+                                   variation=25)
 
     # magnitude distribution with a- and b- value and a minimum magnitude.
     magnitudes = MagnitudeDistribution.GutenbergRichter(a=1, b=1.0, Mmin=0.)

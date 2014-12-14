@@ -390,11 +390,11 @@ class STF():
             else:
                 risetime = guess_risettime_by_magnitude(s.magnitude)
 
-            x_stf_new = num.arange(0.,risetime, tr.deltat)
-            if len(x_stf_new)<3:
+            x_stf_new = num.arange(0.,risetime+tr.deltat, tr.deltat)
+            if risetime<tr.deltat:
                 _return_traces.add_item(s, t, tr)
                 continue
-
+            
             finterp = interpolate.interp1d([0., x_stf_new[-1]], [0., 1.])
             y_stf_new = finterp(x_stf_new)
 
