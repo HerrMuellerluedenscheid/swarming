@@ -372,7 +372,7 @@ class STF():
         self.model_z = model.profile('z')
         self.model_vs = model.profile('vs')
 
-    def post_process(self, response, method='guess'):
+    def post_process(self, response, method='guess', chop_traces=True):
         '''a pyrocko.gf.seismosizer.Response object can be handed over on
         which source time functions are supposed to be applied.
         
@@ -383,6 +383,8 @@ class STF():
             is a scaling relation which is rather used for larger earthquakes.
         '''
         _return_traces = Container()
+        _chop_speed_last = 2000.
+        _chop_speed_first = 8000.
         for s,t,tr in response.iter_results():
             _vs = self.vs_from_depth(s.depth)
             if not method=='guess':
@@ -392,6 +394,11 @@ class STF():
 
             x_stf_new = num.arange(0.,risetime+tr.deltat, tr.deltat)
             if risetime<tr.deltat:
+                if chop_traces:
+                    dist = num.sqrt(s.distance_to(t)**2+s.depth**2)
+                    tmax_last = dist/_chop_speed_last
+                    tmax_first = dist/_chop_speed_first
+                    tr.chop(tmin=s.time+tmax_first, tmax=s.time+tmax_last)
                 _return_traces.add_item(s, t, tr)
                 continue
             
@@ -402,6 +409,11 @@ class STF():
             conv_diff = (len(y_stf_new)-1)/2
             new_y = num.convolve(y_stf_new, tr.get_ydata())
             tr.set_ydata(new_y[conv_diff:-conv_diff])
+            if chop_traces:
+                dist = num.sqrt(s.distance_to(t)**2+s.depth**2)
+                tmax_last = dist/_chop_speed_last
+                tmax_first = dist/_chop_speed_first
+                tr.chop(tmin=s.time+tmax_first, tmax=s.time+tmax_last)
             
             _return_traces.add_item(s, t, tr)
     

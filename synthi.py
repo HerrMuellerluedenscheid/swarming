@@ -35,7 +35,7 @@ if __name__=='__main__':
     stores = os.environ["STORES"]
 
     # Number of sources....
-    number_sources = 200
+    number_sources = 500
 
     # swarm geometry.
     # center_lat, center_lon and center_depth define the center point of
@@ -65,7 +65,7 @@ if __name__=='__main__':
     
     # Timing tmin and tmax are in seconds after 1.1.1970
     one_day = 24*60*60
-    timing = RandomTiming(tmin=0, tmax=one_day, number=number_sources)
+    timing = RandomTiming(tmin=0, tmax=2*one_day, number=number_sources)
 
     # The PropagationTiming class is not finished yet. The idea was to be
     # able to let the events start nucleating at one point and let them 
@@ -79,7 +79,7 @@ if __name__=='__main__':
                                    variation=25)
 
     # magnitude distribution with a- and b- value and a minimum magnitude.
-    magnitudes = MagnitudeDistribution.GutenbergRichter(a=1, b=1.0, Mmin=0.)
+    magnitudes = MagnitudeDistribution.GutenbergRichter(a=1, b=0.75, Mmin=0.)
 
     # The store we are going extract green functions from:
     store_id = 'vogtland_50Hz_step'
