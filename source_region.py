@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from pyrocko import moment_tensor
 from pyrocko.gf import seismosizer
 from scipy import stats, interpolate
+from collections import defaultdict
 import os
 
 sdr_ranges = dict(zip(['strike', 'dip', 'rake'], [[0., 360.],
@@ -15,7 +16,13 @@ to_rad = num.pi/180.
 
 def GutenbergRichterDiscrete(a,b, Mmin=0., Mmax=8., inc=0.1, normalize=True):
     """discrete GutenbergRichter randomizer.
-    Use returnvalue.rvs() to draw random number"""
+    Use returnvalue.rvs() to draw random number. 
+    
+    :param a: a-value
+    :param b: b-value
+    :param Mmin: minimum magnitude of distribution
+    :param Mmax: maxiumum magnitude of distribution
+    :param inc: step of magnitudes """
     x = num.arange(Mmin, Mmax+inc, inc)
     y = 10**(a-b*x)
     if normalize:
@@ -84,7 +91,8 @@ class BaseSourceGeometry():
         for val in  num.nditer(self.xyz, order='F', flags=['external_loop']):
             yield val
 
-class RectangularSourceGeometry(BaseSourceGeometry):
+class CuboidSourceGeometry(BaseSourceGeometry):
+    '''Source locations in a cuboid shaped volume'''
     def __init__(self, length, depth, thickness, *args, **kwargs):
         BaseSourceGeometry.__init__(self, *args, **kwargs)
         self.length = length
@@ -105,6 +113,7 @@ class RectangularSourceGeometry(BaseSourceGeometry):
 
 
 class MagnitudeDistribution:
+    '''Magnitudes that the events should have.'''
     def __init__(self, x, y, Mmin=0., Mmax=8., inc=0.1, scaling=1.):
         self.x = x
         self.y = y
@@ -140,6 +149,7 @@ class MagnitudeDistribution:
 
 
 class Timing:
+    ''' When should events fire?'''
     def __init__(self, tmin, tmax, *args, **kwargs):
         self.tmin = tmin
         self.tmax = tmax
@@ -165,6 +175,7 @@ class Timing:
 
 
 class RandomTiming(Timing):
+    ''' Random event times'''
     def __init__(self, *args, **kwargs):
         Timing.__init__(self, *args, **kwargs)
         self.setup(kwargs.get('number'))
@@ -175,6 +186,8 @@ class RandomTiming(Timing):
         self.timings = dict(zip(i, t))
 
 class PropagationTiming(Timing):
+    ''' Not yet ready, or buggy. This is supposed to add a directivity to
+    event nucliation... '''
     def __init__(self, *args, **kwargs):
         Timing.__init__(self, geometry=None, *args, **kwargs)
         self.geometry = geometry
@@ -210,7 +223,15 @@ class PropagationTiming(Timing):
 
 
 class FocalDistribution():
+    '''Randomizer class for focal mechanisms. 
+    Based on the base_source and a variation given in degrees focal mechanisms
+    are randomized.'''
     def __init__(self, n=100, base_source=None, variation=360):
+        '''
+        :param n: number of needed focal mechansims
+        :param base_source: a pyrocko reference source 
+        :param variation: [degree] by how much focal mechanisms may deviate
+                        from *base_source*'''
         self.n = n 
         self.base_source= base_source 
         self.variation = variation
@@ -246,15 +267,23 @@ class FocalDistribution():
 
 
 class Swarm():
-    def __init__(self, geometry, timing, mechanisms, magnitudes):
+    '''This puts all privous classes into a nutshell and produces the 
+    swarm'''
+    def __init__(self, geometry, timing, mechanisms, magnitudes, stf=None):
         self.geometry = geometry
         self.timing = timing
         self.mechanisms = mechanisms 
         self.magnitudes = magnitudes 
         self.sources = seismosizer.SourceList()
+        self.stf = stf
         self.setup()
 
-    def setup(self):
+    def setup(self, model='dc'):
+        '''Two different source types can be used: rectangular source and
+        DCsource. When using DC Sources, the source time function (STF class)
+        will be added using the *post_process* method. Otherwise, rupture
+        velocity, rise time and rupture length are deduced from source depth
+        and magnitude.'''
         geometry = self.geometry.iter()
         center_lat = self.geometry.center_lat
         center_lon = self.geometry.center_lon
@@ -262,28 +291,78 @@ class Swarm():
 
         mechanisms = self.mechanisms.iter()
         timings = self.timing.iter()
-        for north_shift, east_shift, depth in self.geometry.iter():
-            mech = mechanisms.next()
-            k, t = timings.next()
-            mag = self.magnitudes.get_magnitude()
-            s = seismosizer.DCSource(lat=float(center_lat), 
-                                     lon=float(center_lon), 
-                                     depth=float(depth+center_depth),
-                                     north_shift=float(north_shift),
-                                     east_shift=float(east_shift),
-                                     time=float(t),
-                                     magnitude=float(mag),
-                                     strike=float(mech[0]),
-                                     dip=float(mech[1]),
-                                     rake=float(mech[2]))
-            s.validate()
-            self.sources.append(s)
+        if model=='rectangular':
+            for north_shift, east_shift, depth in self.geometry.iter():
+                mech = mechanisms.next()
+                k, t = timings.next()
+                mag = self.magnitudes.get_magnitude()
+                L, rt = self.stf.get_L_risetime(depth+center_depth, mag)
+                z = depth+center_depth
+                velo = self.stf.vs_from_depth(z+center_depth)
+                s = seismosizer.CuboidSourceGeometry(lat=float(center_lat), 
+                                                  lon=float(center_lon), 
+                                                  depth=float(z),
+                                                  north_shift=float(north_shift),
+                                                  east_shift=float(east_shift),
+                                                  time=float(t),
+                                                  magnitude=float(mag),
+                                                  strike=float(mech[0]),
+                                                  dip=float(mech[1]),
+                                                  rake=float(mech[2]),
+                                                  length=float(L),
+                                                  width=float(L),
+                                                  velocity=float(velo),
+                                                  risetime=float(t))
+                s.validate()
+        elif model=='dc':
+            for north_shift, east_shift, depth in self.geometry.iter():
+                mech = mechanisms.next()
+                k, t = timings.next()
+                mag = self.magnitudes.get_magnitude()
+                #L, rt = self.stf.get_L_risetime(depth+center_depth, mag)
+                z = depth+center_depth
+                velo = self.stf.vs_from_depth(z+center_depth)
+                s = seismosizer.DCSource(lat=float(center_lat), 
+                                         lon=float(center_lon), 
+                                         depth=float(depth+center_depth),
+                                         north_shift=float(north_shift),
+                                         east_shift=float(east_shift),
+                                         time=float(t),
+                                         magnitude=float(mag),
+                                         strike=float(mech[0]),
+                                         dip=float(mech[1]),
+                                         rake=float(mech[2]))
+                s.validate()
+                self.sources.append(s)
 
     def get_sources(self):
+        '''Return a list of source'''
         return self.sources
 
     def get_events(self):
+        '''Return a list of all events'''
         return [s.pyrocko_event() for s in self.sources]
+
+
+class Container():
+    '''Similar to seismosizer.Response... Just for convenience'''
+    def __init__(self):
+        self.data = defaultdict(dict)
+
+    def add_item(self, key1, key2, item):
+        self.data[key1][key2] = item
+
+    def traces_list(self):
+        data = [] 
+        for s, t_tr in self.data.items():
+            for t, tr in t_tr.items():
+                data.append(tr)
+        return data
+
+    def snuffle(self):
+        '''Open *snuffler* with requested traces.'''
+        trace.snuffle(self.traces_list())
+
 
 class STF():
     """Base class to define width, length and duartion of source """
@@ -293,20 +372,55 @@ class STF():
         self.model_z = model.profile('z')
         self.model_vs = model.profile('vs')
 
-    def process(self, response):
+    def post_process(self, response, method='guess', chop_traces=True):
+        '''a pyrocko.gf.seismosizer.Response object can be handed over on
+        which source time functions are supposed to be applied.
+        
+        :param method: if this parameter is set to 'guess', 
+            method guess_risettime_by_magnitude (see below) will be used
+            to estimate rise times.
+            Otherwise method magnitude2risetimearea is used. Latter one 
+            is a scaling relation which is rather used for larger earthquakes.
+        '''
+        _return_traces = Container()
+        _chop_speed_last = 2000.
+        _chop_speed_first = 8000.
         for s,t,tr in response.iter_results():
             _vs = self.vs_from_depth(s.depth)
-            length, risetime = magnitude2risetimearea(s.magnitude, _vs)
-            slip = num.arange(0., risetime, tr.deltat)
-            finterp = interpolate.interp1d([0.,risetime], [0., 1.])
-            ynew = finterp(slip)
-            tr.set_ydata(num.convolve(ynew, tr.get_ydata()))
-        response.snuffle()
+            if not method=='guess':
+                length, risetime = magnitude2risetimearea(s.magnitude, _vs)
+            else:
+                risetime = guess_risettime_by_magnitude(s.magnitude)
+
+            x_stf_new = num.arange(0.,risetime+tr.deltat, tr.deltat)
+            if risetime<tr.deltat:
+                if chop_traces:
+                    dist = num.sqrt(s.distance_to(t)**2+s.depth**2)
+                    tmax_last = dist/_chop_speed_last
+                    tmax_first = dist/_chop_speed_first
+                    tr.chop(tmin=s.time+tmax_first, tmax=s.time+tmax_last)
+                _return_traces.add_item(s, t, tr)
+                continue
+            
+            finterp = interpolate.interp1d([0., x_stf_new[-1]], [0., 1.])
+            y_stf_new = finterp(x_stf_new)
+
+            #correct for additional samples due to convolution:
+            conv_diff = (len(y_stf_new)-1)/2
+            new_y = num.convolve(y_stf_new, tr.get_ydata())
+            tr.set_ydata(new_y[conv_diff:-conv_diff])
+            if chop_traces:
+                dist = num.sqrt(s.distance_to(t)**2+s.depth**2)
+                tmax_last = dist/_chop_speed_last
+                tmax_first = dist/_chop_speed_first
+                tr.chop(tmin=s.time+tmax_first, tmax=s.time+tmax_last)
+            
+            _return_traces.add_item(s, t, tr)
     
-        return response
+        return _return_traces
 
     def vs_from_depth(self, depth):
-        """ linear interpolated vs at *depth*"""
+        """ linear interpolated vs at a given *depth* in the provided model."""
         i_top_layer = num.max(num.where(self.model_z<=depth))
         i_bottom_layer = i_top_layer+1
         v_b = self.model_vs[i_bottom_layer]
@@ -314,6 +428,30 @@ class STF():
         return v_t+(v_b-v_t)*(depth-self.model_z[i_top_layer])\
                 /(self.model_z[i_top_layer]-self.model_z[i_bottom_layer])
         
+    def get_L_risetime(self, depth, magnitude):
+        _vs = self.vs_from_depth(depth)
+        return magnitude2risetimearea(magnitude, _vs)
+
+
+def guess_risettime_by_magnitude(mag):
+    '''interpolate rise times from guessed rise times at certain magnitudes.
+    modify the dictionary below at free will if you know which rise times are
+    to be expected.'''
+    #Freely guessed values. keys-> magnitudes, values -> rise times
+    guessed_rise_times = {-1:0.001,
+                          0:0.01,
+                          1:0.05,
+                          2:0.1,
+                          3:0.5,
+                          4:1.0,
+                          5:2}
+    
+    mags = num.array(guessed_rise_times.keys())
+    rts = num.array(guessed_rise_times.values())
+
+    finterp = interpolate.interp1d(mags, rts)
+    return finterp(mag)
+
 
 def magnitude2risetimearea(mag, vs):
     """Following Hank and Bakun 2002 and 2008
