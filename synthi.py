@@ -31,10 +31,10 @@ if __name__=='__main__':
     number_sources = 10
 
     # swarm geometry
-    geometry = RectangularSourceGeometry(center_lon=12.4, 
-                                     center_lat=50.2,
+    geometry = RectangularSourceGeometry(center_lon=12.45, 
+                                     center_lat=50.214,
                                      center_depth=10000,
-                                     azimuth=40.,
+                                     azimuth=-40.,
                                      dip=10.,
                                      tilt=45.,
                                      length=2000.,
