@@ -2,7 +2,7 @@ import numpy as num
 from numpy import sin, cos
 import matplotlib.pyplot as plt
 from pyrocko import moment_tensor
-from pyrocko.gf import seismosizer
+from pyrocko.gf import seismosizer, Target
 from scipy import stats, interpolate
 from collections import defaultdict
 import os
@@ -13,7 +13,28 @@ sdr_ranges = dict(zip(['strike', 'dip', 'rake'], [[0., 360.],
 
 to_rad = num.pi/180.
 
-
+def guess_targets_from_stations(stations, channels='NEZ', quantity='velocity'):
+    '''convert a list of pyrocko stations to individual seismosizer target 
+    instances.'''
+    targets = []
+    for s in stations:
+        if not s.channels:
+            channels = channels
+        else:
+            channels = s.get_channels.keys()
+       
+        targets.extend([Target(lat=s.lat, 
+                               lon=s.lon, 
+                               elevation=s.elevation, 
+                               depth=s.depth, 
+                               quantity=quantity,
+                              codes=(s.network,
+                                     s.station,
+                                     s.location, 
+                                     c)) for c in channels])
+    return targets    
+    
+    
 def GutenbergRichterDiscrete(a,b, Mmin=0., Mmax=8., inc=0.1, normalize=True):
     """discrete GutenbergRichter randomizer.
     Use returnvalue.rvs() to draw random number. 
