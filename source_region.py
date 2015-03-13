@@ -399,6 +399,10 @@ class STF():
                     tmax_last = dist/_chop_speed_last
                     tmax_first = dist/_chop_speed_first
                     tr.chop(tmin=s.time+tmax_first, tmax=s.time+tmax_last)
+                    a = tr.get_ydata()
+                    vel = num.append(a, 0)- num.append(0, a)
+                    tr.set_ydata(vel)
+                    
                 _return_traces.add_item(s, t, tr)
                 continue
             
