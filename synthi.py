@@ -82,7 +82,8 @@ if __name__=='__main__':
     magnitudes = MagnitudeDistribution.GutenbergRichter(a=1, b=0.75, Mmin=0.)
 
     # The store we are going extract green functions from:
-    store_id = 'vogtland_50Hz_step'
+    #store_id = 'vogtland_50Hz_step'
+    store_id = 'vogtland_7'
     engine = LocalEngine(store_superdirs=[stores], 
                          default_store_id=store_id)
 
