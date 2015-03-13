@@ -7,7 +7,7 @@ from source_region import *
 import numpy as num
 import os
 
-def guess_targets_from_stations(stations, channels='NEZ'):
+def guess_targets_from_stations(stations, channels='NEZ', quantity='displacement'):
     '''convert a list of pyrocko stations to individual seismosizer target 
     instances.'''
     targets = []
@@ -21,6 +21,7 @@ def guess_targets_from_stations(stations, channels='NEZ'):
                                lon=s.lon, 
                                elevation=s.elevation, 
                                depth=s.depth, 
+                               quantity=quantity,
                               codes=(s.network,
                                      s.station,
                                      s.location, 
@@ -104,7 +105,7 @@ if __name__=='__main__':
     # Scrutinize the swarm using matplotlib
 
     # convert loaded stations to targets (see function at the top).
-    targets = guess_targets_from_stations(stats)
+    targets = guess_targets_from_stations(stats, quantity='velocity')
 
     # Processing that data will return a pyrocko.gf.seismosizer.Reponse object.
     response = engine.process(sources=swarm.get_sources(), 
