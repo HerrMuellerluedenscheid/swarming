@@ -7,35 +7,19 @@ from source_region import *
 import numpy as num
 import os
 
-def guess_targets_from_stations(stations, channels='NEZ'):
-    '''convert a list of pyrocko stations to individual seismosizer target 
-    instances.'''
-    targets = []
-    for s in stations:
-        if not s.channels:
-            channels = channels
-        else:
-            channels = s.get_channels.keys()
-       
-        targets.extend([Target(lat=s.lat, 
-                               lon=s.lon, 
-                               elevation=s.elevation, 
-                               depth=s.depth, 
-                              codes=(s.network,
-                                     s.station,
-                                     s.location, 
-                                     c)) for c in channels])
-    return targets    
+  
         
 if __name__=='__main__':
     
     # I use the following environment variables to locate green function 
     # stores and the station files, which in this case are the webnet stations.
-    webnet = os.environ["WEBNET"]
+    
+    
+    #webnet = os.environ["WEBNET"]
     stores = os.environ["STORES"]
 
     # Number of sources....
-    number_sources = 500
+    number_sources = 50
 
     # swarm geometry.
     # center_lat, center_lon and center_depth define the center point of
@@ -100,12 +84,12 @@ if __name__=='__main__':
                   stf=stf)
 
     # setup stations/targets:
-    stats = load_stations(webnet+'/meta/stations.pf')
-    
+    #stats = load_stations(webnet+'/meta/stations.pf')
+    stats = load_stations('/home/des/karamzad/working/myprograms/project/meta/stations_vogtland_all.txt')
     # Scrutinize the swarm using matplotlib
 
     # convert loaded stations to targets (see function at the top).
-    targets = guess_targets_from_stations(stats)
+    targets = guess_targets_from_stations(stats, quantity='velocity')
 
     # Processing that data will return a pyrocko.gf.seismosizer.Reponse object.
     response = engine.process(sources=swarm.get_sources(), 
