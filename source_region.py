@@ -75,6 +75,16 @@ def Rx(theta):
                       [sin(theta), cos(theta), 0.],
                       [0, 0, 1]])
 
+def unityvektorfromangles(azi, dip):
+    ax = num.cos(dip)*num.cos(azi)
+    ay = num.cos(dip)*num.sin(azi)
+    az = num.sin(dip)
+    return num.array([ax, ay, az])
+
+def proj(x, A): 
+    '''x: vector to be projected onto A'''
+    return num.dot(x, A)/num.dot(A,A)* A
+
 def rot_matrix(alpha, beta, gamma):
     '''rotations around z-, y- and x-axis'''
     alpha *= (num.pi/180.)
@@ -175,11 +185,9 @@ class Timing:
         self.tmin = tmin
         self.tmax = tmax
         self.timings = {}
+        self.count = -1
 
     def iter(self, key=None):
-        #if key:
-        #    keys = sorted(self.timings.keys())
-        #else:
         keys = sorted(self.timings.keys())
             
         for k in keys:
@@ -196,89 +204,81 @@ class Timing:
 
 
 class RandomTiming(Timing):
-    ''' Random event times'''
+    ''' Random nucleation of events in a given time span
+
+    :param tmin: start time
+    :param tmax: stop time
+    '''
     def __init__(self, *args, **kwargs):
         Timing.__init__(self, *args, **kwargs)
-        self.setup(kwargs.get('number'))
-
+    
     def setup(self, swarm):
-        # hier muss die anzahl der sources rein:
-        i = range(swarm.get_nsources())
-        t = num.random.uniform(self.tmin, self.tmax, number)
-        self.timings = dict(zip(i, t))
-
-#class PropagationTiming(Timing):
-#    ''' Not yet ready, or buggy. This is supposed to add a directivity to
-#    event nucliation... '''
-#    def __init__(self, *args, **kwargs):
-#        Timing.__init__(self, geometry=None, *args, **kwargs)
-#        self.geometry = geometry
-#
-#    def setup(number=None, sources=None, azimuth=None, dip=None, tilt=None):
-#        sources = self.geometry.sources if not sources else sources
-#        azimuth = self.geometry.azimuth if not azimuth else azimuth
-#        dip = self.geometry.dip if not dip  else dip
-#        tilt = self.geometry.tilt if not tilt else tilt
-#        #theta = (90.-azimuth)%360.
-#        #theta *= to_rad 
-#        direction = num.array([1,0,0]).T
-#        '''Apply rotation and dipping.'''
-#        rm = rot_matrix(azimuth, dip, tilt)
-#        w = num.dot(rm, direction)
-#        wnorm = num.linalg.norm(w)
-#        wnorm_sq = wnorm**2
-#
-#        for s in sources:# projection onto rupture vector
-#            v = [s.north_shift, s.east_shift, s.depth-self.geometry.center_depth]
-#            vnorm = num.linalg.norm(v)
-#            projv = num.dot(w,v)/wnorm_sq*w
-#            print projv    
-#        
-#
-#        #perp = (azimuth+90.)/180.*num.pi
-#
-#        # linear interpolation 
-#
-#        # adding normal randomization
-#        return _xyz.T
-
-class PropagationTiming(Timing):
-    ''' Not yet ready, or buggy. This is supposed to add a directivity to
-    event nucliation... '''
-    def __init__(self, *args, **kwargs):
-        Timing.__init__(self, geometry=None, *args, **kwargs)
-        # ueberfluessig
-        self.geometry = geometry
-
-    def setup(self, swarm):
-        sources = swarm.geometry.sources if not sources else sources
-        azimuth = swarm.geometry.azimuth if not azimuth else azimuth
-        dip = swarm.geometry.dip if not dip  else dip
-        tilt = swarm.geometry.tilt if not tilt else tilt
-        #theta = (90.-azimuth)%360.
-        #theta *= to_rad 
-        direction = num.array([1,0,0]).T
-        '''Apply rotation and dipping.'''
-        rm = rot_matrix(azimuth, dip, tilt)
-        w = num.dot(rm, direction)
-        wnorm = num.linalg.norm(w)
-        wnorm_sq = wnorm**2
-
-        for s in sources:# projection onto rupture vector
-            v = [s.north_shift, s.east_shift, s.depth-self.geometry.center_depth]
-            vnorm = num.linalg.norm(v)
-            projv = num.dot(w,v)/wnorm_sq*w
-            print projv    
+        i = len(swarm.geometry.xyz.T)
+        t = num.random.uniform(self.tmin, self.tmax, i)
+        self.timings = dict(zip(range(i), t))
         
+class PropagationTiming(Timing):
+    '''
+    Add a migration like behaviour to your swarm.
 
-        #perp = (azimuth+90.)/180.*num.pi
+    :param dip: dipping angle of migration direction (optional)
+    :param azimuth: azimuthal angle of migration direction (optional)
+    :param variance: function to add variance in nucleation (optional)
+    
+    dip and azimuth are deduced from the orientation of the geometry if not
+    explicitly given.
+        
+    :example:
+        one_day = 3600.*24
+        timing = PropagationTiming(
+            tmin=0,
+            tmax=one_day,
+            dip=90,
+            variance=lambda x:
+                x+num.random.uniform(low=-one_day/2., high=one_day/2.))
 
-        # linear interpolation 
+    '''
+    def __init__(self, *args, **kwargs):
+        try:
+            self.dip = kwargs.pop('dip')
+        except KeyError:
+            self.dip = None
 
-        # adding normal randomization
-        return _xyz.T
+        try:
+            self.azimuth = kwargs.pop('azimuth')
+        except KeyError:
+            self.azimuth = None
+        
+        try:
+            self.variance = kwargs.pop('variance')
+        except KeyError:
+            self.variance = None
+        Timing.__init__(self, *args, **kwargs)
+    
+    def setup(self, swarm, dip=None, azimuth=None):
+        xyzs = swarm.geometry.xyz
+        azimuth = swarm.geometry.azimuth if not self.azimuth else self.azimuth
+        dip = swarm.geometry.dip if not self.dip  else self.dip
+        b = unityvektorfromangles(azimuth, dip)
+        npoints = len(xyzs.T)
+        a_b = num.zeros(npoints)
+        for i in xrange(npoints):
+            a = xyzs.T[i]
+            a_b[i] = num.linalg.norm(proj(a, b))
+            if num.arccos(num.dot(a/num.linalg.norm(a),b/num.linalg.norm(b)))<num.pi/2.:
+                a_b[i]*=-1
 
+        min_ab = a_b.min()
+        max_ab = a_b.max()
 
+        t = min_ab+(self.tmax-self.tmin)/max_ab*a_b
+        if self.variance:
+            t = map(self.variance, t)
+        
+        self.timings = dict(zip(range(npoints), t))
+        
+    def __iter__(self):
+        return iter(self.timings)
 
 class FocalDistribution():
     '''Randomizer class for focal mechanisms. 
@@ -348,8 +348,8 @@ class Swarm():
         center_depth = self.geometry.center_depth
 
         mechanisms = self.mechanisms.iter()
-        timing.setup(self)
-        #timings = self.timing.iter()
+        self.timing.setup(self)
+        timings = self.timing.iter()
         if model=='rectangular':
             for north_shift, east_shift, depth in self.geometry.iter():
                 mech = mechanisms.next()
