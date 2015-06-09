@@ -407,8 +407,14 @@ class Container():
     '''Similar to seismosizer.Response... Just for convenience'''
     def __init__(self):
         self.data = defaultdict(dict)
+        self.targets = [] 
+        self.sources = []
 
     def add_item(self, key1, key2, item):
+        if key1 not in self.sources:
+            self.sources.append(key1)
+        if key2 not in self.targets:
+            self.targets.append(key2)
         self.data[key1][key2] = item
 
     def traces_list(self):
@@ -417,6 +423,14 @@ class Container():
             for t, tr in t_tr.items():
                 data.append(tr)
         return data
+
+    def iter(self):
+        for s, t_tr in self.data.items():
+            for t, tr in t_tr.items():
+                yield s, t, tr
+
+    def __getitem__(self, key):
+        return self.data[key]
 
     def snuffle(self):
         '''Open *snuffler* with requested traces.'''
