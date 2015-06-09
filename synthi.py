@@ -1,4 +1,4 @@
-from pyrocko.gf.seismosizer import RemoteEngine, Target, LocalEngine
+from pyrocko.gf.seismosizer import RemoteEngine, Target, LocalEngine, Request, Response
 from pyrocko.model import load_stations, dump_events
 from pyrocko import io
 from visualizer import Visualizer
@@ -6,16 +6,54 @@ from source_region import magnitude2risetimearea
 from source_region import *
 import numpy as num
 import os
+import progressbar
 
-  
-        
+def dir_from_event(e):
+    return e.time_as_string().replace(' ', '_').replace(':', '')
+
+def do_pad_traces(trs):
+    t_min = min(trs, key=lambda t: t.tmin).tmin
+    t_max = max(trs, key=lambda t: t.tmax).tmax
+    for tr in trs:
+        tr.extend(tmin=t_min, tmax=t_max)
+
+    return trs
+
+def write_container_to_dirs(container, base_dir, pad_traces=True):
+    sources = container.sources
+    targets = container.targets
+
+    if not os.path.exists(base_dir):
+        os.makedirs(base_dir)
+
+    p = progressbar.ProgressBar(widgets=['writing: ',
+                                         progressbar.Percentage(), 
+                                         progressbar.Bar()],
+                                maxval=len(sources)).start()
+    for i_s, s in enumerate(sources):
+        _trs = [container[s][t] for t in targets]
+        if pad_traces:
+            _trs = do_pad_traces(_trs)
+        e = s.pyrocko_event()
+        out_dir = os.path.join(base_dir, dir_from_event(e))
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+
+        for tr in _trs:
+            io.save(tr, filename_template=out_dir+'/tr_%(network)s.%(station)s.%(location)s.%(channel)s.mseed')
+
+        e.olddump(os.path.join(out_dir, 'event.pf'))
+
+        p.update(i_s)
+    p.finish()
+
 if __name__=='__main__':
     
     # I use the following environment variables to locate green function 
     # stores and the station files, which in this case are the webnet stations.
     
     
-    #webnet = os.environ["WEBNET"]
+    webnet = os.environ["WEBNET"]
     stores = os.environ["STORES"]
 
     # Number of sources....
@@ -49,12 +87,18 @@ if __name__=='__main__':
     
     # Timing tmin and tmax are in seconds after 1.1.1970
     one_day = 24*60*60
-    timing = RandomTiming(tmin=0, tmax=2*one_day, number=number_sources)
+    #timing = RandomTiming(tmin=0, tmax=2*one_day, number=number_sources)
 
     # The PropagationTiming class is not finished yet. The idea was to be
     # able to let the events start nucleating at one point and let them 
     # propagate through the medium. 
-    #timing = PropagationTiming(geometry)
+    one_day = 3600.*24
+    timing = PropagationTiming(
+        tmin=0,
+        tmax=one_day,
+        dip=90,
+        variance=lambda x:
+            x+num.random.uniform(low=-one_day, high=one_day))
     
     # Focal Mechanisms based on reference source a variation of strike, dip 
     # and rake in degrees and the number of sources.
@@ -67,8 +111,9 @@ if __name__=='__main__':
 
     # The store we are going extract green functions from:
     #store_id = 'vogtland_50Hz_step'
-    store_id = 'vogtland_7'
-    engine = LocalEngine(store_superdirs=[stores], 
+    #store_id = 'vogtland_7'
+    store_id = 'vogtland_fischer_horalek_2000_vpvs169_minus4p'
+    engine = LocalEngine(use_config=True,
                          default_store_id=store_id)
 
     store = engine.get_store()
@@ -84,8 +129,8 @@ if __name__=='__main__':
                   stf=stf)
 
     # setup stations/targets:
-    #stats = load_stations(webnet+'/meta/stations.pf')
-    stats = load_stations('/home/des/karamzad/working/myprograms/project/meta/stations_vogtland_all.txt')
+    stats = load_stations(webnet+'/meta/stations.pf')
+    #stats = load_stations('/home/des/karamzad/working/myprograms/project/meta/stations_vogtland_all.txt')
     # Scrutinize the swarm using matplotlib
 
     # convert loaded stations to targets (see function at the top).
@@ -98,10 +143,12 @@ if __name__=='__main__':
     
     # Save the events
     dump_events(swarm.get_events(), 'events_swarm.pf')
-    io.save(response.pyrocko_traces(), 'swarm.mseed')
+    #io.save(response.pyrocko_traces(), 'swarm.mseed')
 
     convolved_traces = stf.post_process(response)
-    
+    #write_container_to_dirs(convolved_traces, 'swarm', pad_traces=False)
+    write_container_to_dirs(convolved_traces, 'swarm', pad_traces=True)
+
     # Save traces:
-    io.save(convolved_traces.traces_list(), 'swarm_stf.mseed')
-    Visualizer(swarm, stats)
+    #io.save(convolved_traces.traces_list(), 'swarm_stf.mseed')
+    #Visualizer(swarm, stats)
