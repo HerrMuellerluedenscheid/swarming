@@ -1,3 +1,4 @@
+import logging
 import numpy as num
 from numpy import sin, cos
 import matplotlib.pyplot as plt
@@ -6,6 +7,9 @@ from pyrocko.gf import seismosizer, Target
 from scipy import stats, interpolate
 from collections import defaultdict
 import os
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 sdr_ranges = dict(zip(['strike', 'dip', 'rake'], [[0., 360.],
                                                   [0., 90.],
@@ -359,11 +363,21 @@ class Perturbation():
         self.perturbations = perturbations
 
     def apply(self, container):
+        _got_perturbed = set()
+        _not_got_perturbed = set()
         for s, t, tr in container.iter():
             trid = tr.nslc_id[:3]
             if trid in self.perturbations:
-                tr.shift(self.perturbations[trid])
-    
+                tshift = self.perturbations[trid]
+                tr.shift(tshift)
+                _got_perturbed.add((trid, tshift))
+            else:
+                _not_got_perturbed.add(trid )
+        logger.info('Perturbed:')
+        [logger.info(trid) for trid in _got_perturbed]
+        logger.info('NOT perturbed:')
+        [logger.info(trid) for trid in _not_got_perturbed]
+
     @classmethod
     def from_file(cls, fn, revert=False):
         perturbations = load_station_corrections(fn, revert=revert)
