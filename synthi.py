@@ -2,7 +2,6 @@ from pyrocko.gf.seismosizer import RemoteEngine, Target, LocalEngine, Request, R
 from pyrocko.model import load_stations, dump_events
 from pyrocko import io
 from visualizer import Visualizer
-from source_region import magnitude2risetimearea
 from source_region import *
 import numpy as num
 import os
@@ -131,7 +130,10 @@ if __name__=='__main__':
     # setup stations/targets:
     stats = load_stations(webnet+'/meta/stations.pf')
     #stats = load_stations('/home/des/karamzad/working/myprograms/project/meta/stations_vogtland_all.txt')
-    # Scrutinize the swarm using matplotlib
+    corrections = os.path.join(os.environ['HOME'],
+                               'src/seismerize',
+                               'residuals_median_CakeResiduals.dat')
+    perturbation = Perturbation.from_file(corrections, revert=True)
 
     # convert loaded stations to targets (see function at the top).
     targets = guess_targets_from_stations(stats, quantity='velocity')
@@ -146,9 +148,14 @@ if __name__=='__main__':
     #io.save(response.pyrocko_traces(), 'swarm.mseed')
 
     convolved_traces = stf.post_process(response)
-    #write_container_to_dirs(convolved_traces, 'swarm', pad_traces=False)
+    
+    # Add time shifts as given in the corrections filename
+    perturbation.apply(convolved_traces)
+
     write_container_to_dirs(convolved_traces, 'swarm', pad_traces=True)
 
     # Save traces:
     #io.save(convolved_traces.traces_list(), 'swarm_stf.mseed')
+    
+    # Scrutinize the swarm using matplotlib
     #Visualizer(swarm, stats)

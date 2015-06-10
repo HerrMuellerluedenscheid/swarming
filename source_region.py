@@ -13,6 +13,37 @@ sdr_ranges = dict(zip(['strike', 'dip', 'rake'], [[0., 360.],
 
 to_rad = num.pi/180.
 
+def load_station_corrections(fn, combine_channels=True, revert=False):
+    """
+    :param combine_channels: if True, return one correction per station, which i
+                             mean of all phases"""
+    corrections = {}
+    with open(fn, 'r') as f:
+        for l in f.readlines():
+            nslc_id, phasename, residual = l.split()
+            nslc_id = tuple(nslc_id.split('.'))
+            if not nslc_id in corrections.keys():
+                corrections[nslc_id] = {}
+            if residual=='None':
+                residual = None
+            else:
+                residual = float(residual)
+                if revert:
+                    residual *= -1.
+
+            corrections[nslc_id][phasename] = residual
+
+    if combine_channels:
+        combined = {}
+        for nslc_id, phasename_residual in corrections.items():
+            d = num.array(phasename_residual.values())
+            d = d[d!=num.array(None)]
+            combined[nslc_id[:3]] = num.mean(d)
+        return combined
+    else:
+        return corrections
+
+
 def guess_targets_from_stations(stations, channels='NEZ', quantity='velocity'):
     '''convert a list of pyrocko stations to individual seismosizer target 
     instances.'''
@@ -322,6 +353,21 @@ class FocalDistribution():
 
     def get_mechanisms(self):
         return self.mechanisms
+
+class Perturbation():
+    def __init__(self, perturbations):
+        self.perturbations = perturbations
+
+    def apply(self, container):
+        for s, t, tr in container.iter():
+            trid = tr.nslc_id[:3]
+            if trid in self.perturbations:
+                tr.shift(self.perturbations[trid])
+    
+    @classmethod
+    def from_file(cls, fn, revert=False):
+        perturbations = load_station_corrections(fn, revert=revert)
+        return cls(perturbations)
 
 
 class Swarm():
