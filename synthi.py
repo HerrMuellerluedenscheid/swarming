@@ -1,19 +1,26 @@
-from pyrocko.gf.seismosizer import RemoteEngine, Target, LocalEngine, Request, Response
-from pyrocko.model import load_stations, dump_events
-from pyrocko import io
-from visualizer import Visualizer
-from source_region import *
 import numpy as num
 import os
 import progressbar
+import logging
+
+from pyrocko.gf.seismosizer import RemoteEngine, Target, LocalEngine, Request, Response
+from pyrocko.model import load_stations, dump_events
+from pyrocko import io, trace
+from visualizer import Visualizer
+from source_region import *
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger()
 
 def dir_from_event(e):
     return e.time_as_string().replace(' ', '_').replace(':', '')
 
-def do_pad_traces(trs):
+def do_pad_traces(trs, fade=0.1):
     t_min = min(trs, key=lambda t: t.tmin).tmin
     t_max = max(trs, key=lambda t: t.tmax).tmax
+    fader = trace.CosFader(xfrac=fade)
     for tr in trs:
+        tr.taper(fader)
         tr.extend(tmin=t_min, tmax=t_max)
 
     return trs
@@ -34,6 +41,7 @@ def write_container_to_dirs(container, base_dir, pad_traces=True):
         if pad_traces:
             _trs = do_pad_traces(_trs)
         e = s.pyrocko_event()
+        e.set_name(str(i_s))
         out_dir = os.path.join(base_dir, dir_from_event(e))
         if not os.path.exists(out_dir):
             os.makedirs(out_dir)
@@ -56,7 +64,7 @@ if __name__=='__main__':
     stores = os.environ["STORES"]
 
     # Number of sources....
-    number_sources = 50
+    number_sources = 200
 
     # swarm geometry.
     # center_lat, center_lon and center_depth define the center point of
@@ -67,13 +75,15 @@ if __name__=='__main__':
     # length, depth and thickness describe the x-, z- and y-extension
     geometry = CuboidSourceGeometry(center_lon=12.45, 
                                      center_lat=50.214,
+    #geometry = CuboidSourceGeometry(center_lon=0., 
+    #                                 center_lat=0.,
                                      center_depth=10000,
-                                     azimuth=-40.,
-                                     dip=10.,
-                                     tilt=25.,
-                                     length=2000.,
-                                     depth=1500.,
-                                     thickness=100., 
+                                     azimuth=15,
+                                     dip=-75.,
+                                     tilt=0.,
+                                     length=3000.,
+                                     depth=3000.,
+                                     thickness=200., 
                                      n=number_sources)
     
     # reference source. All other source mechanisms will be similar to this
@@ -85,7 +95,7 @@ if __name__=='__main__':
                                        strike=170, dip=80,rake=-30)
     
     # Timing tmin and tmax are in seconds after 1.1.1970
-    one_day = 24*60*60
+    #one_day = 24*60*60
     #timing = RandomTiming(tmin=0, tmax=2*one_day, number=number_sources)
 
     # The PropagationTiming class is not finished yet. The idea was to be
@@ -95,23 +105,24 @@ if __name__=='__main__':
     timing = PropagationTiming(
         tmin=0,
         tmax=one_day,
-        dip=90,
+        dip=45,
         variance=lambda x:
-            x+num.random.uniform(low=-one_day, high=one_day))
+            x+num.random.uniform(low=-one_day/1.2, high=one_day/1.2))
     
     # Focal Mechanisms based on reference source a variation of strike, dip 
     # and rake in degrees and the number of sources.
     mechanisms = FocalDistribution(n=number_sources, 
                                    base_source=base_source, 
-                                   variation=25)
+                                   variation=30)
 
     # magnitude distribution with a- and b- value and a minimum magnitude.
-    magnitudes = MagnitudeDistribution.GutenbergRichter(a=1, b=0.75, Mmin=0.)
+    magnitudes = MagnitudeDistribution.GutenbergRichter(a=1, b=0.5, Mmin=0.5)
 
     # The store we are going extract green functions from:
     #store_id = 'vogtland_50Hz_step'
     #store_id = 'vogtland_7'
     store_id = 'vogtland_fischer_horalek_2000_vpvs169_minus4p'
+    #store_id = 'vogtland_malek2004_alexandrakis_100'
     engine = LocalEngine(use_config=True,
                          default_store_id=store_id)
 
@@ -122,7 +133,7 @@ if __name__=='__main__':
 
     # Gather these information to create the swarm:
     swarm = Swarm(geometry=geometry, 
-                  timing=timing, 
+                  timing=timing,
                   mechanisms=mechanisms,
                   magnitudes=magnitudes,
                   stf=stf)
@@ -133,26 +144,34 @@ if __name__=='__main__':
     corrections = os.path.join(os.environ['HOME'],
                                'src/seismerize',
                                'residuals_median_CakeResiduals.dat')
+    
+    # Add a perturbation. *revert=True* means, that the traces are shifted by the correction time * -1.
     perturbation = Perturbation.from_file(corrections, revert=True)
 
     # convert loaded stations to targets (see function at the top).
     targets = guess_targets_from_stations(stats, quantity='velocity')
-
+    logger.info('processing request...')
+    print 'SKIP!'
     # Processing that data will return a pyrocko.gf.seismosizer.Reponse object.
     response = engine.process(sources=swarm.get_sources(), 
                               targets=targets)
+    #logger.info('done')
 
-    
-    # Save the events
-    dump_events(swarm.get_events(), 'events_swarm.pf')
+    ## Save the events
+    #events= swarm.get_events()
+    #for i, e in enumerate(events):
+    #    e.set_name(str(i))
+
+    #dump_events(events, 'events_swarm.pf')
     #io.save(response.pyrocko_traces(), 'swarm.mseed')
-
-    convolved_traces = stf.post_process(response)
-    
-    # Add time shifts as given in the corrections filename
+    print 'convolve'
+    convolved_traces = stf.post_process(response, chop_traces=True)
+    print 'perturb'
+    ## Add time shifts as given in the corrections filename
+    write_container_to_dirs(convolved_traces, 'unperturbed', pad_traces=True)
+    #print 'SKIPwrite'
     perturbation.apply(convolved_traces)
-
-    write_container_to_dirs(convolved_traces, 'swarm', pad_traces=True)
+    write_container_to_dirs(convolved_traces, 'swarm_perturbed', pad_traces=True)
 
     # Save traces:
     #io.save(convolved_traces.traces_list(), 'swarm_stf.mseed')
