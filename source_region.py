@@ -8,12 +8,20 @@ from scipy import stats, interpolate
 from collections import defaultdict
 import os
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 sdr_ranges = dict(zip(['strike', 'dip', 'rake'], [[0., 360.],
                                                   [0., 90.],
                                                   [-180., 180.]]))
+#Freely guessed values. keys-> magnitudes, values -> rise times
+guessed_rise_times = {-1:0.001,
+                      0:0.01,
+                      1:0.02,
+                      2:0.05,
+                      3:0.1,
+                      4:0.3,
+                      5:0.8, 
+                      6:1.3}
 
 to_rad = num.pi/180.
 
@@ -141,7 +149,12 @@ class BaseSourceGeometry():
 
     def orientate(self, xyz):
         '''Apply rotation and dipping.'''
-        rm = rot_matrix(self.azimuth, self.dip, self.tilt)
+        logger.info('apply geometry')
+        #rm = rot_matrix(self.azimuth, self.dip, self.tilt)
+
+        rm = moment_tensor.euler_to_matrix((90.-self.dip)/180.*num.pi,
+                                           self.tilt/180.*num.pi, 
+                                           self.azimuth/180.*num.pi)
         _xyz = num.zeros(xyz.shape)
         _xyz = _xyz.T
         i = 0 
@@ -152,6 +165,7 @@ class BaseSourceGeometry():
 
     def setup(self):
         '''setup x, y and z coordinates of sources'''
+        pass
 
     def iter(self):
         for val in  num.nditer(self.xyz, order='F', flags=['external_loop']):
@@ -167,6 +181,7 @@ class CuboidSourceGeometry(BaseSourceGeometry):
         self.setup()
 
     def setup(self):
+        logger.info('setup geometry')
         z_range = num.array([-self.depth/2., self.depth/2.])
         x_range = num.array([-self.length/2., self.length/2.])
         y_range = num.array([-self.thickness/2., self.thickness/2.])
@@ -248,6 +263,7 @@ class RandomTiming(Timing):
         Timing.__init__(self, *args, **kwargs)
     
     def setup(self, swarm):
+        logger.info('random timing')
         i = len(swarm.geometry.xyz.T)
         t = num.random.uniform(self.tmin, self.tmax, i)
         self.timings = dict(zip(range(i), t))
@@ -291,6 +307,7 @@ class PropagationTiming(Timing):
         Timing.__init__(self, *args, **kwargs)
     
     def setup(self, swarm, dip=None, azimuth=None):
+        logger.info('PropagationTiming')
         xyzs = swarm.geometry.xyz
         azimuth = swarm.geometry.azimuth if not self.azimuth else self.azimuth
         dip = swarm.geometry.dip if not self.dip  else self.dip
@@ -336,6 +353,7 @@ class FocalDistribution():
             yield mech
 
     def setup_sources(self):
+        logger.info('setup sources')
         if self.base_source:
             bs = self.base_source
             s,d,r = bs.strike, bs.dip, bs.rake
@@ -372,7 +390,7 @@ class Perturbation():
                 tr.shift(tshift)
                 _got_perturbed.add((trid, tshift))
             else:
-                _not_got_perturbed.add(trid )
+                _not_got_perturbed.add(trid)
         logger.info('Perturbed:')
         [logger.info(trid) for trid in _got_perturbed]
         logger.info('NOT perturbed:')
@@ -402,6 +420,7 @@ class Swarm():
         will be added using the *post_process* method. Otherwise, rupture
         velocity, rise time and rupture length are deduced from source depth
         and magnitude.'''
+        logger.info('Start setup swarm instance %s'%self)
         geometry = self.geometry.iter()
         center_lat = self.geometry.center_lat
         center_lon = self.geometry.center_lon
@@ -411,7 +430,9 @@ class Swarm():
         self.timing.setup(self)
         timings = self.timing.iter()
         if model=='rectangular':
+            logger.debug('Nshift, Eshift, Z')
             for north_shift, east_shift, depth in self.geometry.iter():
+                logger.debug('%s, %s, %s'%(north_shift, east_shift, depth))
                 mech = mechanisms.next()
                 k, t = timings.next()
                 mag = self.magnitudes.get_magnitude()
@@ -435,12 +456,13 @@ class Swarm():
                 s.validate()
         elif model=='dc':
             for north_shift, east_shift, depth in self.geometry.iter():
+                logger.debug('%s, %s, %s'%(north_shift, east_shift, depth))
+                #mech = mechanisms.next()
                 mech = mechanisms.next()
                 k, t = timings.next()
                 mag = self.magnitudes.get_magnitude()
                 #L, rt = self.stf.get_L_risetime(depth+center_depth, mag)
                 z = depth+center_depth
-                velo = self.stf.vs_from_depth(z+center_depth)
                 s = seismosizer.DCSource(lat=float(center_lat), 
                                          lon=float(center_lon), 
                                          depth=float(depth+center_depth),
@@ -500,7 +522,7 @@ class Container():
 class STF():
     """Base class to define width, length and duartion of source """
     def __init__(self, relation, model=None):
-        self.relation = relation
+        #self.relation = relation
         self.model = model
         self.model_z = model.profile('z')
         self.model_vs = model.profile('vs')
@@ -539,10 +561,11 @@ class STF():
             finterp = interpolate.interp1d([0., x_stf_new[-1]], [0., 1.])
             y_stf_new = finterp(x_stf_new)
 
-            #correct for additional samples due to convolution:
-            conv_diff = (len(y_stf_new)-1)/2
-            new_y = num.convolve(y_stf_new, tr.get_ydata())
-            tr.set_ydata(new_y[conv_diff:-conv_diff])
+            y_stf_new = num.zeros(len(x_stf_new)+20)
+            y_stf_new[10:-10] = 1.
+            new_y = num.convolve(y_stf_new, tr.get_ydata(), 'same')
+            tr.shift(x_stf_new[-1]*0.5)
+            tr.set_ydata(new_y)
             if chop_traces:
                 dist = num.sqrt(s.distance_to(t)**2+s.depth**2)
                 tmax_last = dist/_chop_speed_last
@@ -576,14 +599,6 @@ def guess_risettime_by_magnitude(mag):
     '''interpolate rise times from guessed rise times at certain magnitudes.
     modify the dictionary below at free will if you know which rise times are
     to be expected.'''
-    #Freely guessed values. keys-> magnitudes, values -> rise times
-    guessed_rise_times = {-1:0.001,
-                          0:0.01,
-                          1:0.05,
-                          2:0.1,
-                          3:0.5,
-                          4:1.0,
-                          5:2}
     
     mags = num.array(guessed_rise_times.keys())
     rts = num.array(guessed_rise_times.values())
