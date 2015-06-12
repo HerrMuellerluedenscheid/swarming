@@ -16,12 +16,12 @@ sdr_ranges = dict(zip(['strike', 'dip', 'rake'], [[0., 360.],
 #Freely guessed values. keys-> magnitudes, values -> rise times
 guessed_rise_times = {-1:0.001,
                       0:0.01,
-                      1:0.02,
-                      2:0.05,
-                      3:0.1,
-                      4:0.3,
-                      5:0.8, 
-                      6:1.3}
+                      1:0.05,
+                      2:0.1,
+                      3:0.2,
+                      4:0.4,
+                      5:0.6, 
+                      6:1.0}
 
 to_rad = num.pi/180.
 
@@ -558,11 +558,13 @@ class STF():
                 _return_traces.add_item(s, t, tr)
                 continue
             
-            finterp = interpolate.interp1d([0., x_stf_new[-1]], [0., 1.])
+            finterp = interpolate.interp1d([0., x_stf_new[-1]*0.2, x_stf_new[-1]*0.8, x_stf_new[-1]], [0., 1., 1., 0.])
             y_stf_new = finterp(x_stf_new)
-
-            y_stf_new = num.zeros(len(x_stf_new)+20)
+            #y_stf_new = num.zeros(len(x_stf_new)+20)
             y_stf_new[10:-10] = 1.
+            if max(y_stf_new)!=1.:
+                import pdb 
+                pdb.set_trace()
             new_y = num.convolve(y_stf_new, tr.get_ydata(), 'same')
             tr.shift(x_stf_new[-1]*0.5)
             tr.set_ydata(new_y)
