@@ -2,7 +2,7 @@ import logging
 import numpy as num
 from numpy import sin, cos
 import matplotlib.pyplot as plt
-from pyrocko import moment_tensor
+from pyrocko import moment_tensor, trace
 from pyrocko.gf import seismosizer, Target
 from scipy import stats, interpolate
 from collections import defaultdict
@@ -170,6 +170,57 @@ class BaseSourceGeometry():
     def iter(self):
         for val in  num.nditer(self.xyz, order='F', flags=['external_loop']):
             yield val
+
+
+class Noise():
+    def __init__(self, degap=False):
+        self.degap = degap
+
+    def make_noise(self, tr):
+        return
+
+    def apply(self, container):
+        if not self.degap:
+            for s, t, tr in container.iter():
+                tr.add(self.noise[tr.nslc_id])
+
+        else:
+            traces = {}
+            for s, t, tr in container.iter():
+                if not t in traces.keys():
+                    traces[t] = [tr]
+                else:
+                    traces[t].append(tr)
+
+            noised = {}
+            for t, trs in traces.items():
+                tmin = min([tr.tmin for tr in trs])
+                tmax = max([tr.tmax for tr in trs])
+                degapped = trace.Trace(tmin=tmin,
+                                       network=trs[0].network,
+                                       station=trs[0].station,
+                                       location=trs[0].location,
+                                       channel=trs[0].channel,
+                                       deltat=trs[0].deltat, 
+                                       ydata=num.zeros((tmax-tmin)/trs[0].deltat))
+                #degapped = trace.degapper(trs, maxgap=999999999999, fillmethod='zeros', deoverlap='add')
+                for tr in trs:
+                    degapped.add(tr)
+                degapped.ydata += self.make_noise(degapped)
+                noised[t] = degapped
+
+            return noised
+
+
+class GaussNoise(Noise):
+    def __init__(self, degap=False, mu=1.):
+        Noise.__init__(self, degap)
+        self.mu = mu
+
+    def make_noise(self, tr):
+        return num.random.normal(0,self.mu,len(tr.ydata))
+
+
 
 class CuboidSourceGeometry(BaseSourceGeometry):
     '''Source locations in a cuboid shaped volume'''

@@ -64,7 +64,7 @@ if __name__=='__main__':
     stores = os.environ["STORES"]
 
     # Number of sources....
-    number_sources = 200
+    number_sources = 100
 
     # swarm geometry.
     # center_lat, center_lon and center_depth define the center point of
@@ -101,7 +101,8 @@ if __name__=='__main__':
     # The PropagationTiming class is not finished yet. The idea was to be
     # able to let the events start nucleating at one point and let them 
     # propagate through the medium. 
-    one_day = 3600.*24
+    #one_day = 3600.*24
+    one_day=120
     timing = PropagationTiming(
         tmin=0,
         tmax=one_day,
@@ -113,10 +114,10 @@ if __name__=='__main__':
     # and rake in degrees and the number of sources.
     mechanisms = FocalDistribution(n=number_sources, 
                                    base_source=base_source, 
-                                   variation=30)
+                                   variation=40)
 
     # magnitude distribution with a- and b- value and a minimum magnitude.
-    magnitudes = MagnitudeDistribution.GutenbergRichter(a=1, b=0.5, Mmin=0.5)
+    magnitudes = MagnitudeDistribution.GutenbergRichter(a=1, b=0.5, Mmin=0.08)
 
     # The store we are going extract green functions from:
     #store_id = 'vogtland_50Hz_step'
@@ -156,25 +157,28 @@ if __name__=='__main__':
     response = engine.process(sources=swarm.get_sources(), 
                               targets=targets)
     #logger.info('done')
-
     ## Save the events
-    #events= swarm.get_events()
-    #for i, e in enumerate(events):
-    #    e.set_name(str(i))
+    events= swarm.get_events()
+    for i, e in enumerate(events):
+        e.set_name(str(i))
 
-    #dump_events(events, 'events_swarm.pf')
+    dump_events(events, 'events_swarm.pf')
     #io.save(response.pyrocko_traces(), 'swarm.mseed')
     print 'convolve'
     convolved_traces = stf.post_process(response, chop_traces=True)
     print 'perturb'
     ## Add time shifts as given in the corrections filename
-    write_container_to_dirs(convolved_traces, 'unperturbed', pad_traces=True)
+    #write_container_to_dirs(convolved_traces, 'unperturbed', pad_traces=True)
     #print 'SKIPwrite'
     perturbation.apply(convolved_traces)
-    write_container_to_dirs(convolved_traces, 'swarm_perturbed', pad_traces=True)
+    noise = GaussNoise(degap=True, mu=0.00000001)
+    noised = noise.apply(convolved_traces)
+    trace.snuffle(noised.values(), events=events)
+
+    #write_container_to_dirs(convolved_traces, 'swarm_perturbed', pad_traces=True)
 
     # Save traces:
-    #io.save(convolved_traces.traces_list(), 'swarm_stf.mseed')
+    io.save(convolved_traces.traces_list(), 'swarm_stf.mseed')
     
     # Scrutinize the swarm using matplotlib
-    #Visualizer(swarm, stats)
+    Visualizer(swarm, stats)
