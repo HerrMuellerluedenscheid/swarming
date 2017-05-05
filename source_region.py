@@ -66,21 +66,21 @@ def guess_targets_from_stations(stations, channels='NEZ', quantity='velocity'):
         else:
             channels = s.get_channels.keys()
 
-        targets.extend([Target(lat=s.lat, 
-                               lon=s.lon, 
-                               elevation=s.elevation, 
-                               depth=s.depth, 
+        targets.extend([Target(lat=s.lat,
+                               lon=s.lon,
+                               elevation=s.elevation,
+                               depth=s.depth,
                                quantity=quantity,
                               codes=(s.network,
                                      s.station,
-                                     s.location, 
+                                     s.location,
                                      c)) for c in channels])
     return targets
 
 
 def GutenbergRichterDiscrete(a,b, Mmin=0., Mmax=8., inc=0.1, normalize=True):
     """discrete GutenbergRichter randomizer.
-    Use returnvalue.rvs() to draw random number. 
+    Use returnvalue.rvs() to draw random number.
 
     :param a: a-value
     :param b: b-value
@@ -91,8 +91,8 @@ def GutenbergRichterDiscrete(a,b, Mmin=0., Mmax=8., inc=0.1, normalize=True):
     y = 10**(a-b*x)
     if normalize:
         y/=num.sum(y)
- 
-    return x/inc, y, inc 
+
+    return x/inc, y, inc
 
 
 def GR_distribution(a,b, mag_lo, mag_hi):
@@ -157,7 +157,7 @@ class BaseSourceGeometry():
                                            self.azimuth/180.*num.pi)
         _xyz = num.zeros(xyz.shape)
         _xyz = _xyz.T
-        i = 0 
+        i = 0
         for v in num.nditer(xyz, flags=['external_loop'], order='F'):
             _xyz[i] = num.dot(rm, v)
             i += 1
@@ -290,7 +290,7 @@ class Timing:
 
     def iter(self, key=None):
         keys = sorted(self.timings.keys())
-            
+
         for k in keys:
             yield k, self.timings[k]
 
@@ -312,13 +312,13 @@ class RandomTiming(Timing):
     '''
     def __init__(self, *args, **kwargs):
         Timing.__init__(self, *args, **kwargs)
-    
+
     def setup(self, swarm):
         logger.info('random timing')
         i = len(swarm.geometry.xyz.T)
         t = num.random.uniform(self.tmin, self.tmax, i)
         self.timings = dict(zip(range(i), t))
-        
+
 class PropagationTiming(Timing):
     '''
     Add a migration like behaviour to your swarm.
@@ -326,10 +326,10 @@ class PropagationTiming(Timing):
     :param dip: dipping angle of migration direction (optional)
     :param azimuth: azimuthal angle of migration direction (optional)
     :param variance: function to add variance in nucleation (optional)
-    
+
     dip and azimuth are deduced from the orientation of the geometry if not
     explicitly given.
-        
+
     :example:
         one_day = 3600.*24
         timing = PropagationTiming(
@@ -350,13 +350,13 @@ class PropagationTiming(Timing):
             self.azimuth = kwargs.pop('azimuth')
         except KeyError:
             self.azimuth = None
-        
+
         try:
             self.variance = kwargs.pop('variance')
         except KeyError:
             self.variance = None
         Timing.__init__(self, *args, **kwargs)
-    
+
     def setup(self, swarm, dip=None, azimuth=None):
         logger.info('PropagationTiming')
         xyzs = swarm.geometry.xyz
@@ -377,9 +377,9 @@ class PropagationTiming(Timing):
         t = min_ab+(self.tmax-self.tmin)/max_ab*a_b
         if self.variance:
             t = map(self.variance, t)
-        
+
         self.timings = dict(zip(range(npoints), t))
-        
+
     def __iter__(self):
         return iter(self.timings)
 
@@ -606,10 +606,10 @@ class STF():
                     tmax_last = dist/_chop_speed_last
                     tmax_first = dist/_chop_speed_first
                     tr.chop(tmin=s.time+tmax_first, tmax=s.time+tmax_last)
-                    
+
                 _return_traces.add_item(s, t, tr)
                 continue
-            
+
             finterp = interpolate.interp1d([0., x_stf_new[-1]*0.2, x_stf_new[-1]*0.8, x_stf_new[-1]], [0., 1., 1., 0.])
             y_stf_new = finterp(x_stf_new)
             #y_stf_new = num.zeros(len(x_stf_new)+20)
@@ -625,14 +625,14 @@ class STF():
                 tmax_last = dist/_chop_speed_last
                 tmax_first = dist/_chop_speed_first
                 tr.chop(tmin=s.time+tmax_first, tmax=s.time+tmax_last)
-            
+
             if t.quantity=='velocity':
                 a = tr.get_ydata()
                 vel = num.append(a, 0)- num.append(0, a)
                 tr.set_ydata(vel)
-            
+
             _return_traces.add_item(s, t, tr)
-    
+
         return _return_traces
 
     def vs_from_depth(self, depth):
@@ -643,7 +643,7 @@ class STF():
         v_t = self.model_vs[i_top_layer]
         return v_t+(v_b-v_t)*(depth-self.model_z[i_top_layer])\
                 /(self.model_z[i_top_layer]-self.model_z[i_bottom_layer])
-        
+
     def get_L_risetime(self, depth, magnitude):
         _vs = self.vs_from_depth(depth)
         return magnitude2risetimearea(magnitude, _vs)
@@ -653,7 +653,7 @@ def guess_risettime_by_magnitude(mag):
     '''interpolate rise times from guessed rise times at certain magnitudes.
     modify the dictionary below at free will if you know which rise times are
     to be expected.'''
-    
+
     mags = num.array(guessed_rise_times.keys())
     rts = num.array(guessed_rise_times.values())
 
