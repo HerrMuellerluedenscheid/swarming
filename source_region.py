@@ -1,26 +1,26 @@
 import logging
 import numpy as num
 from numpy import sin, cos
-import matplotlib.pyplot as plt
 from pyrocko import moment_tensor, trace
 from pyrocko.gf import seismosizer, Target
 from scipy import stats, interpolate
 from collections import defaultdict
-import os
+
 
 logger = logging.getLogger(__name__)
 
 sdr_ranges = dict(zip(['strike', 'dip', 'rake'], [[0., 360.],
                                                   [0., 90.],
                                                   [-180., 180.]]))
-#Freely guessed values. keys-> magnitudes, values -> rise times
+
+# Freely guessed values. keys-> magnitudes, values -> rise times
 guessed_rise_times = {-1:0.001,
                       0:0.01,
                       1:0.05,
                       2:0.1,
                       3:0.2,
                       4:0.4,
-                      5:0.6, 
+                      5:0.6,
                       6:1.0}
 
 to_rad = num.pi/180.
@@ -65,7 +65,7 @@ def guess_targets_from_stations(stations, channels='NEZ', quantity='velocity'):
             channels = channels
         else:
             channels = s.get_channels.keys()
-       
+
         targets.extend([Target(lat=s.lat, 
                                lon=s.lon, 
                                elevation=s.elevation, 
@@ -75,13 +75,13 @@ def guess_targets_from_stations(stations, channels='NEZ', quantity='velocity'):
                                      s.station,
                                      s.location, 
                                      c)) for c in channels])
-    return targets    
-    
-    
+    return targets
+
+
 def GutenbergRichterDiscrete(a,b, Mmin=0., Mmax=8., inc=0.1, normalize=True):
     """discrete GutenbergRichter randomizer.
     Use returnvalue.rvs() to draw random number. 
-    
+
     :param a: a-value
     :param b: b-value
     :param Mmin: minimum magnitude of distribution
@@ -124,7 +124,7 @@ def unityvektorfromangles(azi, dip):
     az = num.sin(dip)
     return num.array([ax, ay, az])
 
-def proj(x, A): 
+def proj(x, A):
     '''x: vector to be projected onto A'''
     return num.dot(x, A)/num.dot(A,A)* A
 
@@ -461,7 +461,8 @@ class Swarm():
         self.timing = timing
         self.mechanisms = mechanisms 
         self.magnitudes = magnitudes 
-        self.sources = seismosizer.SourceList()
+        #self.sources = seismosizer.SourceList()
+        self.sources = []
         self.stf = stf
         self.setup()
 

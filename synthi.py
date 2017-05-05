@@ -55,11 +55,11 @@ def write_container_to_dirs(container, base_dir, pad_traces=True):
     p.finish()
 
 if __name__=='__main__':
-    
+
     # I use the following environment variables to locate green function 
     # stores and the station files, which in this case are the webnet stations.
-    
-    
+
+
     webnet = os.environ["WEBNET"]
     stores = os.environ["STORES"]
 
@@ -78,14 +78,16 @@ if __name__=='__main__':
     #geometry = CuboidSourceGeometry(center_lon=0., 
     #                                 center_lat=0.,
                                      center_depth=10000,
-                                     azimuth=15,
-                                     dip=-75.,
+                                     #azimuth=15,
+                                     #dip=-75.,
+                                     azimuth=170,
+                                     dip=80.,
                                      tilt=0.,
                                      length=3000.,
                                      depth=3000.,
                                      thickness=200., 
                                      n=number_sources)
-    
+
     # reference source. All other source mechanisms will be similar to this
     # one but with some degree of freedom defined by a deviation angle.
     # I guessed strike dip and rake angles based on the following paper
@@ -93,7 +95,7 @@ if __name__=='__main__':
     # http://gji.oxfordjournals.org/content/194/2/979.full.pdf?keytype=ref&ijkey=bMwD67zn37OEiJs
     base_source = seismosizer.DCSource(lat=0, lon=0, depth=0, 
                                        strike=170, dip=80,rake=-30)
-    
+
     # Timing tmin and tmax are in seconds after 1.1.1970
     #one_day = 24*60*60
     #timing = RandomTiming(tmin=0, tmax=2*one_day, number=number_sources)
@@ -109,12 +111,12 @@ if __name__=='__main__':
         dip=45,
         variance=lambda x:
             x+num.random.uniform(low=-one_day/1.2, high=one_day/1.2))
-    
+
     # Focal Mechanisms based on reference source a variation of strike, dip 
     # and rake in degrees and the number of sources.
     mechanisms = FocalDistribution(n=number_sources, 
                                    base_source=base_source, 
-                                   variation=40)
+                                   variation=5)
 
     # magnitude distribution with a- and b- value and a minimum magnitude.
     magnitudes = MagnitudeDistribution.GutenbergRichter(a=1, b=0.5, Mmin=0.08)
@@ -122,15 +124,22 @@ if __name__=='__main__':
     # The store we are going extract green functions from:
     #store_id = 'vogtland_50Hz_step'
     #store_id = 'vogtland_7'
-    store_id = 'vogtland_fischer_horalek_2000_vpvs169_minus4p'
+    #store_id = 'vogtland_fischer_horalek_2000_vpvs169_minus4p'
     #store_id = 'vogtland_malek2004_alexandrakis_100'
+    store_id = 'qplayground_total_4_mr_full'
     engine = LocalEngine(use_config=True,
+                         store_superdirs=['/data/stores'],
                          default_store_id=store_id)
 
-    store = engine.get_store()
-    config = store.config 
-    model = config.earthmodel_1d
-    stf = STF(magnitude2risetimearea, model=model)
+    try:
+        store = engine.get_store()
+        config = store.config
+        model = config.earthmodel_1d
+        stf = STF(magnitude2risetimearea, model=model)
+    except OSError:
+        print 'passing OSError. No Model assigned.'
+        stf = None
+        pass
 
     # Gather these information to create the swarm:
     swarm = Swarm(geometry=geometry, 
@@ -138,14 +147,21 @@ if __name__=='__main__':
                   mechanisms=mechanisms,
                   magnitudes=magnitudes,
                   stf=stf)
+    ## Save the events
+    events = swarm.get_events()
+    for i, e in enumerate(events):
+        e.set_name(str(i))
+
+    dump_events(events, 'events_swarm.pf')
 
     # setup stations/targets:
-    stats = load_stations(webnet+'/meta/stations.pf')
+    #stats = load_stations(webnet+'/meta/stations.pf')
+    stats = load_stations('/data/meta/stations.pf')
     #stats = load_stations('/home/des/karamzad/working/myprograms/project/meta/stations_vogtland_all.txt')
     corrections = os.path.join(os.environ['HOME'],
                                'src/seismerize',
                                'residuals_median_CakeResiduals.dat')
-    
+
     # Add a perturbation. *revert=True* means, that the traces are shifted by the correction time * -1.
     perturbation = Perturbation.from_file(corrections, revert=True)
 
@@ -157,12 +173,6 @@ if __name__=='__main__':
     response = engine.process(sources=swarm.get_sources(), 
                               targets=targets)
     #logger.info('done')
-    ## Save the events
-    events= swarm.get_events()
-    for i, e in enumerate(events):
-        e.set_name(str(i))
-
-    dump_events(events, 'events_swarm.pf')
     #io.save(response.pyrocko_traces(), 'swarm.mseed')
     print 'convolve'
     convolved_traces = stf.post_process(response, chop_traces=True)
@@ -179,6 +189,6 @@ if __name__=='__main__':
 
     # Save traces:
     io.save(convolved_traces.traces_list(), 'swarm_stf.mseed')
-    
+
     # Scrutinize the swarm using matplotlib
     Visualizer(swarm, stats)
