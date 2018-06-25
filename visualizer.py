@@ -54,7 +54,6 @@ class Visualizer():
                 lats.append(s.lat)
                 lons.append(s.lon)
                 depths.append(s.depth)
-            print len(depths), len(lats), len(lons)
             ax.scatter(num.array(lons),
                             num.array(lats),
                             num.array(depths),

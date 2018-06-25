@@ -2,7 +2,7 @@ import logging
 import numpy as num
 from numpy import sin, cos
 from pyrocko import moment_tensor, trace
-from pyrocko.gf import seismosizer, Target
+from pyrocko.gf import seismosizer, Target, TriangularSTF
 from scipy import stats, interpolate
 from collections import defaultdict
 
@@ -463,7 +463,6 @@ class Swarm():
         self.magnitudes = magnitudes 
         #self.sources = seismosizer.SourceList()
         self.sources = []
-        self.stf = stf
         self.setup()
 
     def setup(self, model='dc'):
@@ -481,61 +480,37 @@ class Swarm():
         mechanisms = self.mechanisms.iter()
         self.timing.setup(self)
         timings = self.timing.iter()
-        if model=='rectangular':
-            logger.debug('Nshift, Eshift, Z')
-            for north_shift, east_shift, depth in self.geometry.iter():
-                logger.debug('%s, %s, %s'%(north_shift, east_shift, depth))
-                mech = mechanisms.next()
-                k, t = timings.next()
-                mag = self.magnitudes.get_magnitude()
-                L, rt = self.stf.get_L_risetime(depth+center_depth, mag)
-                z = depth+center_depth
-                velo = self.stf.vs_from_depth(z+center_depth)
-                s = seismosizer.CuboidSourceGeometry(lat=float(center_lat), 
-                                                  lon=float(center_lon), 
-                                                  depth=float(z),
-                                                  north_shift=float(north_shift),
-                                                  east_shift=float(east_shift),
-                                                  time=float(t),
-                                                  magnitude=float(mag),
-                                                  strike=float(mech[0]),
-                                                  dip=float(mech[1]),
-                                                  rake=float(mech[2]),
-                                                  length=float(L),
-                                                  width=float(L),
-                                                  velocity=float(velo),
-                                                  risetime=float(t))
-                s.validate()
-        elif model=='dc':
-            for north_shift, east_shift, depth in self.geometry.iter():
-                logger.debug('%s, %s, %s'%(north_shift, east_shift, depth))
-                #mech = mechanisms.next()
-                mech = mechanisms.next()
-                k, t = timings.next()
-                mag = self.magnitudes.get_magnitude()
-                #L, rt = self.stf.get_L_risetime(depth+center_depth, mag)
-                z = depth+center_depth
-                s = seismosizer.DCSource(lat=float(center_lat), 
-                                         lon=float(center_lon), 
-                                         depth=float(depth+center_depth),
-                                         north_shift=float(north_shift),
-                                         east_shift=float(east_shift),
-                                         time=float(t),
-                                         magnitude=float(mag),
-                                         strike=float(mech[0]),
-                                         dip=float(mech[1]),
-                                         rake=float(mech[2]))
-                s.validate()
-                self.sources.append(s)
-
-    def get_sources(self):
-        '''Return a list of source'''
-        return self.sources
+        for north_shift, east_shift, depth in self.geometry.iter():
+            logger.debug('%s, %s, %s'%(north_shift, east_shift, depth))
+            mech = mechanisms.next()
+            k, t = timings.next()
+            mag = self.magnitudes.get_magnitude()
+            z = depth + center_depth
+            _vs = 
+            length, risetime = magnitude2risetimearea(mag, _vs)
+            stf = TriangularSTF(duartion=risetime)
+            s = seismosizer.DCSource(lat=float(center_lat), 
+                                     lon=float(center_lon), 
+                                     depth=float(depth+center_depth),
+                                     north_shift=float(north_shift),
+                                     east_shift=float(east_shift),
+                                     time=float(t),
+                                     magnitude=float(mag),
+                                     strike=float(mech[0]),
+                                     dip=float(mech[1]),
+                                     rake=float(mech[2]),
+                                     stf=stf)
+            s.validate()
+            self.sources.append(s)
 
     def get_events(self):
         '''Return a list of all events'''
-        return [s.pyrocko_event() for s in self.sources]
-
+        events = []
+        for i_s, s in enumerate(self.sources):
+            s.set_name(str(i_s))
+            events.append(s)
+        return events
+        
 
 class Container():
     '''Similar to seismosizer.Response... Just for convenience'''
@@ -574,75 +549,13 @@ class Container():
 class STF():
     """Base class to define width, length and duartion of source """
     def __init__(self, relation, model=None):
-        #self.relation = relation
         self.model = model
         self.model_z = model.profile('z')
         self.model_vs = model.profile('vs')
 
-    def post_process(self, response, method='guess', chop_traces=True):
-        '''a pyrocko.gf.seismosizer.Response object can be handed over on
-        which source time functions are supposed to be applied.
-        
-        :param method: if this parameter is set to 'guess', 
-            method guess_risettime_by_magnitude (see below) will be used
-            to estimate rise times.
-            Otherwise method magnitude2risetimearea is used. Latter one 
-            is a scaling relation which is rather used for larger earthquakes.
-        '''
-        _return_traces = Container()
-        _chop_speed_last = 2000.
-        _chop_speed_first = 8000.
-        for s,t,tr in response.iter_results():
-            _vs = self.vs_from_depth(s.depth)
-            if not method=='guess':
-                length, risetime = magnitude2risetimearea(s.magnitude, _vs)
-            else:
-                risetime = guess_risettime_by_magnitude(s.magnitude)
-
-            x_stf_new = num.arange(0.,risetime+tr.deltat, tr.deltat)
-            if risetime<tr.deltat:
-                if chop_traces:
-                    dist = num.sqrt(s.distance_to(t)**2+s.depth**2)
-                    tmax_last = dist/_chop_speed_last
-                    tmax_first = dist/_chop_speed_first
-                    tr.chop(tmin=s.time+tmax_first, tmax=s.time+tmax_last)
-
-                _return_traces.add_item(s, t, tr)
-                continue
-
-            finterp = interpolate.interp1d([0., x_stf_new[-1]*0.2, x_stf_new[-1]*0.8, x_stf_new[-1]], [0., 1., 1., 0.])
-            y_stf_new = finterp(x_stf_new)
-            #y_stf_new = num.zeros(len(x_stf_new)+20)
-            y_stf_new[10:-10] = 1.
-            if max(y_stf_new)!=1.:
-                import pdb 
-                pdb.set_trace()
-            new_y = num.convolve(y_stf_new, tr.get_ydata(), 'same')
-            tr.shift(x_stf_new[-1]*0.5)
-            tr.set_ydata(new_y)
-            if chop_traces:
-                dist = num.sqrt(s.distance_to(t)**2+s.depth**2)
-                tmax_last = dist/_chop_speed_last
-                tmax_first = dist/_chop_speed_first
-                tr.chop(tmin=s.time+tmax_first, tmax=s.time+tmax_last)
-
-            if t.quantity=='velocity':
-                a = tr.get_ydata()
-                vel = num.append(a, 0)- num.append(0, a)
-                tr.set_ydata(vel)
-
-            _return_traces.add_item(s, t, tr)
-
-        return _return_traces
-
     def vs_from_depth(self, depth):
         """ linear interpolated vs at a given *depth* in the provided model."""
-        i_top_layer = num.max(num.where(self.model_z<=depth))
-        i_bottom_layer = i_top_layer+1
-        v_b = self.model_vs[i_bottom_layer]
-        v_t = self.model_vs[i_top_layer]
-        return v_t+(v_b-v_t)*(depth-self.model_z[i_top_layer])\
-                /(self.model_z[i_top_layer]-self.model_z[i_bottom_layer])
+        return self.model_vs.material(depth).vs
 
     def get_L_risetime(self, depth, magnitude):
         _vs = self.vs_from_depth(depth)
