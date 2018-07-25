@@ -8,8 +8,7 @@ from pyrocko.gf.seismosizer import RemoteEngine, Target, LocalEngine, Request, R
 from pyrocko.model import load_stations, dump_events
 from pyrocko import io, trace
 from pyrocko.guts import Object, String, Int, Float
-from .visualizer import Visualizer
-from .source_region import *
+from swarm.source_region import *
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger()
@@ -38,7 +37,7 @@ def write_container_to_dirs(container, base_dir, pad_traces=True):
         os.makedirs(base_dir)
 
     p = progressbar.ProgressBar(widgets=['writing: ',
-                                         progressbar.Percentage(), 
+                                         progressbar.Percentage(),
                                          progressbar.Bar()],
                                 maxval=len(sources)).start()
     for i_s, s in enumerate(sources):
@@ -97,7 +96,7 @@ def setup(engine, nsources=100):
     # I guessed strike dip and rake angles based on the following paper
     # be Horalek and Sileny:
     # http://gji.oxfordjournals.org/content/194/2/979.full.pdf?keytype=ref&ijkey=bMwD67zn37OEiJs
-    base_source = seismosizer.DCSource(lat=0, lon=0, depth=0, 
+    base_source = seismosizer.DCSource(lat=0, lon=0, depth=0,
                                        strike=170, dip=80,rake=-30)
 
     # Timing tmin and tmax are in seconds after 1.1.1970
@@ -116,14 +115,14 @@ def setup(engine, nsources=100):
         variance=lambda x:
             x+num.random.uniform(low=-one_day/1.2, high=one_day/1.2))
 
-    # Focal Mechanisms based on reference source a variation of strike, dip 
+    # Focal Mechanisms based on reference source a variation of strike, dip
     # and rake in degrees and the number of sources.
-    mechanisms = FocalDistribution(n=nsources, 
-                                   base_source=base_source, 
+    mechanisms = FocalDistribution(n=nsources,
+                                   base_source=base_source,
                                    variation=5)
 
     # magnitude distribution with a- and b- value and a minimum magnitude.
-    magnitudes = MagnitudeDistribution.GutenbergRichter(a=1, b=0.5, Mmin=0.08)
+    magnitudes = GutenbergRichterDiscrete(a=1, b=0.5, Mmin=0.08, Mmax=3.4)
 
     # Gather these information to create the swarm:
     return Swarm(geometry=geometry,
@@ -136,7 +135,7 @@ def setup(engine, nsources=100):
 if __name__ == '__main__':
     engine = LocalEngine(use_config=True,
                          store_superdirs=['/data/stores'],
-                         default_store_id=store_id)
+                         default_store_id='qplayground_total_4_mr_full')
 
     swarm = setup(engine)
     for s, trs in process_swarm(swarm, engine=engine):

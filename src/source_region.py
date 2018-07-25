@@ -1,4 +1,5 @@
 import logging
+from pyrocko.guts import Object, Float, Int, String, Bool
 import numpy as num
 from numpy import sin, cos
 from pyrocko import moment_tensor, trace
@@ -8,6 +9,7 @@ from collections import defaultdict
 
 
 logger = logging.getLogger(__name__)
+uniform = num.random.uniform
 
 sdr_ranges = dict(zip(['strike', 'dip', 'rake'], [[0., 360.],
                                                   [0., 90.],
@@ -24,6 +26,7 @@ guessed_rise_times = {-1:0.001,
                       6:1.0}
 
 to_rad = num.pi/180.
+
 
 def load_station_corrections(fn, combine_channels=True, revert=False):
     """
@@ -78,31 +81,14 @@ def guess_targets_from_stations(stations, channels='NEZ', quantity='velocity'):
     return targets
 
 
-def GutenbergRichterDiscrete(a,b, Mmin=0., Mmax=8., inc=0.1, normalize=True):
-    """discrete GutenbergRichter randomizer.
-    Use returnvalue.rvs() to draw random number.
-
-    :param a: a-value
-    :param b: b-value
-    :param Mmin: minimum magnitude of distribution
-    :param Mmax: maxiumum magnitude of distribution
-    :param inc: step of magnitudes """
-    x = num.arange(Mmin, Mmax+inc, inc)
-    y = 10**(a-b*x)
-    if normalize:
-        y/=num.sum(y)
-
-    return x/inc, y, inc
-
-
 def GR_distribution(a,b, mag_lo, mag_hi):
-    '''from hazardlib or similar?! 
+    '''from hazardlib or similar?!
     TODO: wirklich gebraucht? '''
     return 10**(a- b*mag_lo) - 10**(a - b*mag_hi)
 
 
 def GR(a, b, M):
-    return 10**(a-b*M) 
+    return 10**(a-b*M)
 
 
 def Rz(theta):
@@ -143,16 +129,14 @@ def rot_matrix(alpha, beta, gamma):
     return num.dot(Rz(alpha), Ry(beta), Rx(gamma))
 
 
-class BaseSourceGeometry():
-    def __init__(self, center_lon, center_lat, center_depth, azimuth, dip, tilt, n):
-        self.center_lon = center_lon
-        self.center_lat = center_lat
-        self.center_depth = center_depth
-        self.azimuth = azimuth
-        self.dip = dip
-        self.tilt = tilt
-        self.n = n
-        self.xyz = None
+class BaseSourceGeometry(Object):
+    center_lon = Float.T()
+    center_lat = Float.T()
+    center_depth = Float.T()
+    azimuth = Float.T()
+    dip = Float.T()
+    tilt = Float.T()
+    n = Int.T()
 
     def orientate(self, xyz):
         '''Apply rotation and dipping.'''
@@ -229,70 +213,62 @@ class GaussNoise(Noise):
 
 
 class CuboidSourceGeometry(BaseSourceGeometry):
-    '''Source locations in a cuboid shaped volume'''
-    def __init__(self, length, depth, thickness, *args, **kwargs):
-        BaseSourceGeometry.__init__(self, *args, **kwargs)
-        self.length = length
-        self.depth = depth
-        self.thickness = thickness
-        self.setup()
+    length = Float.T()
+    depth = Float.T()
+    thickness = Float.T()
 
-    def setup(self):
+    '''Source locations in a cuboid shaped volume'''
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         logger.info('setup geometry')
         z_range = num.array([-self.depth/2., self.depth/2.])
         x_range = num.array([-self.length/2., self.length/2.])
         y_range = num.array([-self.thickness/2., self.thickness/2.])
 
-        _xyz = num.array([num.random.uniform(*x_range, size=self.n),
-                          num.random.uniform(*y_range, size=self.n),
-                          num.random.uniform(*z_range, size=self.n)])
-        zs = num.random.uniform(*z_range, size=self.n)
+        _xyz = num.array([uniform(*x_range, size=self.n),
+                          uniform(*y_range, size=self.n),
+                          uniform(*z_range, size=self.n)])
+        zs = uniform(*z_range, size=self.n)
         self.xyz = self.orientate(_xyz)
 
 
-class MagnitudeDistribution:
-    '''Magnitudes that the events should have.'''
-    def __init__(self, x, y, Mmin=0., Mmax=8., inc=0.1, scaling=1.):
-        self.x = x
-        self.y = y
-        self.Mmin = Mmin
-        self.Mmax = Mmax
-        self.inc = inc
-        self.scaling = scaling
-        self.update_randomizer()
+class GutenbergRichterDiscrete(Object):
+    Mmin = Float.T(help='min magnitude')
+    Mmax = Float.T(help='max magnitude')
+    a = Float.T()
+    b = Float.T()
+    increment = Float.T(default=0.1, help='magnitude step')
+    scaling = Float.T(default=1., help='factor scaling magnitudes')
+    normalize = Bool.T(default=True)
 
-    def set_distribution(self, x, y, scaling=1):
-        self.scaling = scaling
-        self.x = x
-        self.y = y
-        self.update_randomizer()
+    '''Magnitudes of events.'''
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        x = num.arange(self.Mmin, self.Mmax+self.increment, self.increment)
+        y = 10**(self.a - self.b*x)
+        if self.normalize:
+            y /= num.sum(y)
 
-    def get_randomizer(self):
-        return self.randomizer
+        x = x/self.increment
 
-    def update_randomizer(self):
-        data = (self.x, self.y)
+        data = (x, y)
         self.randomizer = stats.rv_discrete(name='magnitudes', values=data)
 
     def get_magnitude(self):
-        return self.randomizer.rvs()*self.scaling
+        return self.randomizer.rvs() * self.scaling
 
     def get_magnitudes(self, n):
-        return self.randomizer.rvs(size=n)*self.scaling
-
-    @classmethod
-    def GutenbergRichter(cls, *args, **kwargs):
-        x, y, scaling = GutenbergRichterDiscrete(*args, **kwargs)
-        return cls(x,y, scaling=scaling)
+        return self.randomizer.rvs(size=n) * self.scaling
 
 
-class Timing:
+class Timing(Object):
+    tmin = Float.T()
+    tmax = Float.T()
+
     ''' When should events fire?'''
-    def __init__(self, tmin, tmax, *args, **kwargs):
-        self.tmin = tmin
-        self.tmax = tmax
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.timings = {}
-        self.count = -1
 
     def iter(self, key=None):
         keys = sorted(self.timings.keys())
@@ -319,7 +295,7 @@ class RandomTiming(Timing):
     def setup(self, swarm):
         logger.info('random timing')
         i = len(swarm.geometry.xyz.T)
-        t = num.random.uniform(self.tmin, self.tmax, i)
+        t = uniform(self.tmin, self.tmax, i)
         self.timings = dict(zip(range(i), t))
 
 
@@ -344,11 +320,9 @@ class PropagationTiming(Timing):
                 x+num.random.uniform(low=-one_day/2., high=one_day/2.))
 
     '''
-    def __init__(self, *args, **kwargs):
-        self.dip = kwargs.get('dip', None)
-        self.azimuth = kwargs.get('azimuth', None)
-        self.variance = kwargs.get('variance', None)
-        Timing.__init__(self, *args, **kwargs)
+    dip = Float.T(optional=True)
+    azimuth = Float.T(optional=True)
+    variance = Float.T(optional=True)
 
     def setup(self, swarm, dip=None, azimuth=None):
         logger.info('PropagationTiming')
@@ -377,19 +351,23 @@ class PropagationTiming(Timing):
         return iter(self.timings)
 
 
-class FocalDistribution():
-    '''Randomizer class for focal mechanisms. 
+class FocalDistribution(Object):
+    '''Randomizer class for focal mechanisms.
     Based on the base_source and a variation given in degrees focal mechanisms
     are randomized.'''
-    def __init__(self, n=100, base_source=None, variation=360):
+
+    n = Int.T(default=100)
+    base_source = seismosizer.Source.T(optional=True)
+    variation = Float.T(default=360)
+
+    def __init__(self, **kwargs):
         '''
         :param n: number of needed focal mechansims
-        :param base_source: a pyrocko reference source 
+        :param base_source: a pyrocko reference source
         :param variation: [degree] by how much focal mechanisms may deviate
                         from *base_source*'''
-        self.n = n 
-        self.base_source= base_source 
-        self.variation = variation
+
+        super().__init__(**kwargs)
         self.mechanisms = []
         self.setup_sources()
 
@@ -404,12 +382,10 @@ class FocalDistribution():
             s,d,r = bs.strike, bs.dip, bs.rake
         for i in range(self.n):
             if self.base_source:
-                sdr = moment_tensor.random_strike_dip_rake(s-self.variation/2.,
-                                                       s+self.variation/2.,
-                                                       d-self.variation/2.,
-                                                       d+self.variation/2.,
-                                                       r-self.variation/2.,
-                                                       r+self.variation/2.)
+                sdr = moment_tensor.random_strike_dip_rake(
+                    s-self.variation/2., s+self.variation/2.,
+                    d-self.variation/2., d+self.variation/2.,
+                    r-self.variation/2., r+self.variation/2.)
             else:
                 sdr = moment_tensor.random_strike_dip_rake()
             self.mechanisms.append(sdr)
@@ -447,14 +423,16 @@ class Perturbation():
         return cls(load_station_corrections(fn, revert=revert))
 
 
-class Swarm():
+class Swarm(Object):
     '''This puts all privous classes into a nutshell and produces the swarm'''
-    def __init__(self, geometry, timing, mechanisms, magnitudes, engine, stf=None):
-        self.geometry = geometry
-        self.timing = timing
-        self.mechanisms = mechanisms
-        self.magnitudes = magnitudes
-        self.engine = engine
+    geometry = BaseSourceGeometry.T()
+    timing = Timing.T()
+    mechanisms = FocalDistribution.T()
+    magnitudes = GutenbergRichterDiscrete.T()
+    engine = seismosizer.Engine.T()
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.sources = []
         self.setup()
 
@@ -464,7 +442,7 @@ class Swarm():
         will be added using the *post_process* method. Otherwise, rupture
         velocity, rise time and rupture length are deduced from source depth
         and magnitude.'''
-        logger.info('Start setup swarm instance %s' % self)
+        # logger.info('Start setup swarm instance %s' % self)
         geometry = self.geometry.iter()
         center_depth = self.geometry.center_depth
         mechanisms = self.mechanisms.iter()
