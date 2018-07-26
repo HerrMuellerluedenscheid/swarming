@@ -473,11 +473,11 @@ class Swarm(Object):
 
     def get_effective_sources(self):
         store = self.engine.get_store()
-        print('uring earthmodel %s' % store)
+        logger.info('using store %s' % store.config.id)
         sources = [s for s in self.sources if \
             store.config.source_depth_min < s.depth < store.config.source_depth_max]
         nsources = len(self.sources)
-        print("removed %s of %s sources due to depth range." % (
+        logger.info("removed %s of %s sources due to depth range." % (
             nsources - len(sources), nsources))
         return sources
 

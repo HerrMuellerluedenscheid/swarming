@@ -108,12 +108,13 @@ def setup(engine, nsources=100):
     # propagate through the medium.
     one_day = 3600.*24
     # one_day =120
-    timing = PropagationTiming(
-        tmin=0,
-        tmax=one_day,
-        dip=45,
-        variance=lambda x:
-            x+num.random.uniform(low=-one_day/1.2, high=one_day/1.2))
+    # timing = PropagationTiming(
+    #     tmin=0,
+    #     tmax=one_day,
+    #     dip=45,
+    #     variance=lambda x:
+    #         x+num.random.uniform(low=-one_day/1.2, high=one_day/1.2))
+    timing = RandomTiming(tmin=0, tmax=one_day)
 
     # Focal Mechanisms based on reference source a variation of strike, dip
     # and rake in degrees and the number of sources.
@@ -138,5 +139,6 @@ if __name__ == '__main__':
                          default_store_id='qplayground_total_4_mr_full')
 
     swarm = setup(engine)
-    for s, trs in process_swarm(swarm, engine=engine):
-        print(s, trs)
+    print(swarm)
+    # for s, trs in process_swarm(swarm, engine=engine):
+    #     print(s, trs)
