@@ -130,13 +130,13 @@ def rot_matrix(alpha, beta, gamma):
 
 
 class BaseSourceGeometry(Object):
-    center_lon = Float.T()
-    center_lat = Float.T()
-    center_depth = Float.T()
-    azimuth = Float.T()
-    dip = Float.T()
-    tilt = Float.T()
-    n = Int.T()
+    center_lon = Float.T(default=0.)
+    center_lat = Float.T(default=0.)
+    center_depth = Float.T(default=0.)
+    azimuth = Float.T(default=0.)
+    dip = Float.T(default=0.)
+    tilt = Float.T(default=0.)
+    n = Int.T(default=100)
 
     def orientate(self, xyz):
         '''Apply rotation and dipping.'''
@@ -213,9 +213,9 @@ class GaussNoise(Noise):
 
 
 class CuboidSourceGeometry(BaseSourceGeometry):
-    length = Float.T()
-    depth = Float.T()
-    thickness = Float.T()
+    length = Float.T(default=10000)
+    depth = Float.T(default=10000)
+    thickness = Float.T(default=10000)
 
     '''Source locations in a cuboid shaped volume'''
     def __init__(self, **kwargs):
@@ -233,10 +233,10 @@ class CuboidSourceGeometry(BaseSourceGeometry):
 
 
 class GutenbergRichterDiscrete(Object):
-    Mmin = Float.T(help='min magnitude')
-    Mmax = Float.T(help='max magnitude')
-    a = Float.T()
-    b = Float.T()
+    mag_min = Float.T(default=0., help='min magnitude')
+    mag_max = Float.T(default=3., help='max magnitude')
+    a = Float.T(default=0.5)
+    b = Float.T(default=0.5)
     increment = Float.T(default=0.1, help='magnitude step')
     scaling = Float.T(default=1., help='factor scaling magnitudes')
     normalize = Bool.T(default=True)
@@ -244,7 +244,7 @@ class GutenbergRichterDiscrete(Object):
     '''Magnitudes of events.'''
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        x = num.arange(self.Mmin, self.Mmax+self.increment, self.increment)
+        x = num.arange(self.mag_min, self.mag_max+self.increment, self.increment)
         y = 10**(self.a - self.b*x)
         if self.normalize:
             y /= num.sum(y)
@@ -262,8 +262,8 @@ class GutenbergRichterDiscrete(Object):
 
 
 class Timing(Object):
-    tmin = Float.T()
-    tmax = Float.T()
+    tmin = Float.T(default=0.)
+    tmax = Float.T(default=86400)
 
     ''' When should events fire?'''
     def __init__(self, **kwargs):
@@ -280,7 +280,7 @@ class Timing(Object):
         self.key = key
 
     def get_timings(self):
-        return self.timings 
+        return self.timings
 
     def setup(self):
         pass
@@ -427,14 +427,13 @@ class Swarm(Object):
     '''This puts all privous classes into a nutshell and produces the swarm'''
     geometry = BaseSourceGeometry.T()
     timing = Timing.T()
-    mechanisms = FocalDistribution.T()
-    magnitudes = GutenbergRichterDiscrete.T()
+    mechanisms = FocalDistribution.T(default=FocalDistribution())
+    magnitudes = GutenbergRichterDiscrete.T(default=GutenbergRichterDiscrete())
     engine = seismosizer.Engine.T()
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.sources = []
-        self.setup()
 
     def setup(self, model='dc'):
         '''Two different source types can be used: rectangular source and
@@ -472,6 +471,7 @@ class Swarm(Object):
             self.sources.append(s)
 
     def get_effective_sources(self):
+        self.setup()
         store = self.engine.get_store()
         logger.info('using store %s' % store.config.id)
         sources = [s for s in self.sources if \

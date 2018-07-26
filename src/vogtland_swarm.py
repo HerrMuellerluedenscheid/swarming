@@ -66,7 +66,7 @@ if __name__=='__main__':
                                    variation=25)
 
     # magnitude distribution with a- and b- value and a minimum magnitude.
-    magnitudes = MagnitudeDistribution.GutenbergRichter(a=1, b=0.75, Mmin=0.)
+    magnitudes = MagnitudeDistribution.GutenbergRichter(a=1, b=0.75, mag_min=0.)
 
     # The store we are going extract green functions from:
     #store_id = 'vogtland_50Hz_step'

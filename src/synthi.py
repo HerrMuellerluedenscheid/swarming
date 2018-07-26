@@ -123,7 +123,7 @@ def setup(engine, nsources=100):
                                    variation=5)
 
     # magnitude distribution with a- and b- value and a minimum magnitude.
-    magnitudes = GutenbergRichterDiscrete(a=1, b=0.5, Mmin=0.08, Mmax=3.4)
+    magnitudes = GutenbergRichterDiscrete(a=1, b=0.5, mag_min=0.08, mag_max=3.4)
 
     # Gather these information to create the swarm:
     return Swarm(geometry=geometry,
