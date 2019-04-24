@@ -9,6 +9,7 @@ from pyrocko.model import load_stations, dump_events
 from pyrocko import io, trace
 from pyrocko.guts import Object, String, Int, Float
 from swarm.source_region import *
+from swarm.plot import plot_swarm
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger()
@@ -140,5 +141,8 @@ if __name__ == '__main__':
 
     swarm = setup(engine)
     print(swarm)
+
+    plot_swarm(swarm)
+
     # for s, trs in process_swarm(swarm, engine=engine):
     #     print(s, trs)
